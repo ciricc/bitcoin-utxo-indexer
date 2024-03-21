@@ -4,27 +4,49 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/txmanager"
 	"github.com/philippgille/gokv/encoding"
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
+
+type KeyValueStore[T any] interface {
+	// Get retrieves the value for the given key.
+	Get(key string, v any) (found bool, err error)
+
+	// Set sets the key to the given value.
+	Set(key string, v any) error
+
+	// Delete deletes the key from the store.
+	Delete(key string) error
+
+	// ListKeys iterates over all keys in the store and calls the given function for each key.
+	ListKeys(si func(key string, getValue func(v interface{}) error) (ok bool, err error)) error
+
+	// WithTx returns a new KeyValueStore instance with the given transaction.
+	WithTx(tx txmanager.Transaction[T]) (KeyValueStore[T], error)
+}
+
+type LevelDB interface {
+	Delete(key []byte, wo *opt.WriteOptions) error
+	Get(key []byte, ro *opt.ReadOptions) (value []byte, err error)
+	NewIterator(slice *util.Range, ro *opt.ReadOptions) iterator.Iterator
+	Put(key []byte, value []byte, wo *opt.WriteOptions) error
+}
 
 type StoreOptions struct {
 	Path string
 }
 
 type LevelDBStore struct {
-	db *leveldb.DB
+	db LevelDB
 
 	encoding encoding.Codec
 }
 
-func NewLevelDBStore(options *StoreOptions) (*LevelDBStore, error) {
-	db, err := leveldb.OpenFile(options.Path, &opt.Options{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to open leveldb storage: %w", err)
-	}
-
+func NewLevelDBStore(db LevelDB) (*LevelDBStore, error) {
 	return &LevelDBStore{
 		db:       db,
 		encoding: encoding.JSON,
@@ -64,6 +86,24 @@ func (l *LevelDBStore) Set(key string, v any) error {
 	return nil
 }
 
+func (l *LevelDBStore) Delete(key string) error {
+	err := l.db.Delete([]byte(key), &opt.WriteOptions{
+		Sync: true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete the key: %w", err)
+	}
+
+	return nil
+}
+
+func (l *LevelDBStore) WithTx(tx txmanager.Transaction[*leveldb.Transaction]) (KeyValueStore[*leveldb.Transaction], error) {
+	return &LevelDBStore{
+		db:       tx.Transaction(),
+		encoding: l.encoding,
+	}, nil
+}
+
 func (l *LevelDBStore) ListKeys(si func(key string, getValue func(v interface{}) error) (ok bool, err error)) error {
 	iterator := l.db.NewIterator(nil, nil)
 	defer iterator.Release()
@@ -93,3 +133,5 @@ func (l *LevelDBStore) ListKeys(si func(key string, getValue func(v interface{})
 
 	return nil
 }
+
+var _ KeyValueStore[*leveldb.Transaction] = (*LevelDBStore)(nil)

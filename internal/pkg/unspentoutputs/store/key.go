@@ -22,10 +22,10 @@ type StorageKey struct {
 	key    string
 }
 
-func newTransactionIDKey(txId string) *StorageKey {
+func newTransactionIDKey(txID string) *StorageKey {
 	return &StorageKey{
 		prefix: TransactionIDKeyType,
-		key:    txId,
+		key:    txID,
 	}
 }
 
