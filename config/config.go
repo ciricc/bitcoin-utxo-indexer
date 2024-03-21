@@ -30,6 +30,12 @@ type Config struct {
 	} `yaml:"scannerState"`
 
 	UTXO struct {
+		Service struct {
+			GRPC struct {
+				Address string `yaml:"address"`
+			} `yaml:"grpc"`
+		} `yaml:"service"`
+
 		Storage struct {
 			LevelDB struct {
 				Path string `yaml:"path"`
@@ -67,6 +73,13 @@ func (c Config) Validate() error {
 		validation.Field(&c.ScannerState.StartFromBlockHash, validation.Required, is.Hexadecimal),
 	); err != nil {
 		return fmt.Errorf("failed to validate scannerState options: %w", err)
+	}
+
+	if err := validation.ValidateStruct(
+		&c.UTXO.Service.GRPC,
+		validation.Field(&c.UTXO.Service.GRPC.Address, validation.Required, is.DialString),
+	); err != nil {
+		return fmt.Errorf("failed to validate utxo grpc service options: %w", err)
 	}
 
 	if err := validation.ValidateStruct(

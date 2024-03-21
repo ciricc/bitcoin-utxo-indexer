@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option go_package = "github.com/ciricc/btc-utxo-indexer/pkg/api/grpc/UTXO";
+
+service UTXO {
+	// GetByAddress returns list of UTXO by address
+	rpc GetByAddress(GetByAddressRequest) returns (GetByAddressResponse);
+}
+
+message GetByAddressRequest {
+	// Account address
+	string address = 1;
+}
+
+message GetByAddressResponse {
+	repeated UnspentTransactionOutput unspent_outputs = 1;
+}
+
+message UnspentTransactionOutput {}
+

@@ -4,27 +4,27 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/philippgille/gokv"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 )
 
-type KVStoreState struct {
+type KeyValueScannerState struct {
 	// contains filtered or unexported fields
-	store gokv.Store
+	store keyvaluestore.Store
 
 	defaultStartFromBlockHash string
 }
 
 func NewStateWithKeyValueStore(
 	defaultStartFromBlockHash string,
-	store gokv.Store,
-) *KVStoreState {
-	return &KVStoreState{
+	store keyvaluestore.Store,
+) *KeyValueScannerState {
+	return &KeyValueScannerState{
 		store:                     store,
 		defaultStartFromBlockHash: defaultStartFromBlockHash,
 	}
 }
 
-func (s *KVStoreState) UpdateLastScannedBlockHash(ctx context.Context, hash string) error {
+func (s *KeyValueScannerState) UpdateLastScannedBlockHash(ctx context.Context, hash string) error {
 
 	if err := s.store.Set("lastScannedBlockHash", hash); err != nil {
 		return fmt.Errorf("faild to set lastScannedBlockHash: %w", err)
@@ -33,7 +33,7 @@ func (s *KVStoreState) UpdateLastScannedBlockHash(ctx context.Context, hash stri
 	return nil
 }
 
-func (s *KVStoreState) GetLastScannedBlockHash(ctx context.Context) (string, error) {
+func (s *KeyValueScannerState) GetLastScannedBlockHash(ctx context.Context) (string, error) {
 	var hash string
 	found, err := s.store.Get("lastScannedBlockHash", &hash)
 	if err != nil {

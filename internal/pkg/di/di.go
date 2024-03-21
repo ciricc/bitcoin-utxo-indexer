@@ -18,13 +18,17 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
+	grpchandlers "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/transport/grpc"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
+	"github.com/ciricc/btc-utxo-indexer/pkg/api/grpc/UTXO"
 	"github.com/philippgille/gokv/encoding"
 	redis "github.com/philippgille/gokv/redis"
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
 	"github.com/syndtr/goleveldb/leveldb"
 	configLoader "gitlab.enigmagroup.tech/enigma/evo-wallet/evo-backend/common/config"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func NewBlockchainScanner(i *do.Injector) (*scanner.Scanner[*blockchain.Block], error) {
@@ -33,7 +37,7 @@ func NewBlockchainScanner(i *do.Injector) (*scanner.Scanner[*blockchain.Block], 
 		return nil, fmt.Errorf("invoke bitcin blocs iterator error: %w", err)
 	}
 
-	state, err := do.Invoke[*state.KVStoreState](i)
+	state, err := do.Invoke[*state.KeyValueScannerState](i)
 	if err != nil {
 		return nil, fmt.Errorf("invoke state error: %w", err)
 	}
@@ -142,8 +146,8 @@ func NewRedisClient(i *do.Injector) (*redis.Client, error) {
 	return &client, nil
 }
 
-func NewScannerState(i *do.Injector) (*state.KVStoreState, error) {
-	redisStore, err := do.Invoke[*redis.Client](i)
+func NewScannerState(i *do.Injector) (*state.KeyValueScannerState, error) {
+	levelDBKeyValueStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*leveldb.Transaction]](i)
 	if err != nil {
 		return nil, fmt.Errorf("invoke key value store error: %w", err)
 	}
@@ -155,7 +159,7 @@ func NewScannerState(i *do.Injector) (*state.KVStoreState, error) {
 
 	state := state.NewStateWithKeyValueStore(
 		cfg.ScannerState.StartFromBlockHash,
-		redisStore,
+		levelDBKeyValueStore,
 	)
 
 	return state, nil
@@ -242,6 +246,29 @@ func NewLogger(i *do.Injector) (*zerolog.Logger, error) {
 	log := logger.NewLogger(cfg)
 
 	return &log, nil
+}
+
+func NewUTXOGRPCHandlers(i *do.Injector) (*grpchandlers.UTXOGrpcHandlers, error) {
+	service, err := do.Invoke[*utxoservice.Service](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
+	}
+
+	return grpchandlers.New(service), nil
+}
+
+func NewGRPCServer(i *do.Injector) (*grpc.Server, error) {
+	utxoHandlers, err := do.Invoke[*grpchandlers.UTXOGrpcHandlers](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke UTXO grpc handlers: %w", err)
+	}
+
+	server := grpc.NewServer()
+
+	UTXO.RegisterUTXOServer(server, utxoHandlers)
+	reflection.Register(server)
+
+	return server, nil
 }
 
 func NewLevelDBTxManager(i *do.Injector) (*txmanager.TransactionManager[*leveldb.Transaction], error) {

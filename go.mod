@@ -6,31 +6,34 @@ require (
 	github.com/IBM/sarama v1.43.0
 	github.com/cskr/pubsub v1.0.2
 	github.com/go-ozzo/ozzo-validation v3.6.0+incompatible
-	github.com/philippgille/gokv v0.7.0
 	github.com/philippgille/gokv/encoding v0.7.0
-	github.com/philippgille/gokv/leveldb v0.7.0
 	github.com/philippgille/gokv/redis v0.7.0
 	github.com/syndtr/goleveldb v1.0.0
 	golang.org/x/sync v0.6.0
+	google.golang.org/grpc v1.62.1
+	google.golang.org/protobuf v1.32.0
 )
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
-	github.com/avito-tech/go-transaction-manager v1.5.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/knadh/koanf v1.5.0 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
+	github.com/onsi/ginkgo v1.16.5 // indirect
+	github.com/onsi/gomega v1.24.1 // indirect
 	github.com/philippgille/gokv/util v0.7.0 // indirect
 	github.com/redis/go-redis/v9 v9.5.1 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
-	go.uber.org/atomic v1.7.0 // indirect
-	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240123012728-ef4313101c80 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

@@ -22,10 +22,22 @@ type storageKey struct {
 	key    string
 }
 
-func newTransactionIDKey(txID string) *storageKey {
+func newAddressUTXOTxIDsKey(address string) *storageKey {
+	return &storageKey{
+		prefix: addressKeyType,
+		key:    fmt.Sprintf("%s:o", address),
+	}
+}
+
+func newTransactionIDKey(txID string, isOutputs bool) *storageKey {
+	suffix := "outputs"
+	if !isOutputs {
+		suffix = "inputs"
+	}
+
 	return &storageKey{
 		prefix: transactionIDKeyType,
-		key:    txID,
+		key:    fmt.Sprintf("%s:%s", txID, suffix),
 	}
 }
 

@@ -26,6 +26,10 @@ scannerState:
     host: localhost:6379
     
 utxo:
+  service:
+    grpc:
+      address: localhost:50051
+
   storage:
     leveldb:
       path: /var/lib/utxostore
