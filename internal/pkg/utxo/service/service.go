@@ -1,47 +1,47 @@
-package utxostoreservice
+package utxoservice
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvaluestore"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/txmanager"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/unspentoutputs/store"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/rs/zerolog"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
 type UTXOStore interface {
-	AddTransactionOutputs(ctx context.Context, txID string, outputs []*store.TransactionOutput) error
-	GetOutputsByTxID(_ context.Context, txID string) ([]*store.TransactionOutput, error)
+	AddTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
+	GetOutputsByTxID(_ context.Context, txID string) ([]*utxostore.TransactionOutput, error)
 	SpendOutput(_ context.Context, txID string, idx int) error
-	WithStore(s store.KeyValueStore) *store.UnspentOutputsStore
+	WithStorer(storer keyvaluestore.Store) *utxostore.Store
 }
 
-type UTXOServiceOptions struct {
+type ServiceOptions struct {
 	Logger *zerolog.Logger
 }
 
-type UTXOStoreService struct {
+type Service struct {
 	s UTXOStore
 
-	txManager    *txmanager.TxManager[*leveldb.Transaction]
-	ldbUTXOStore keyvaluestore.KeyValueStore[*leveldb.Transaction]
+	txManager    *txmanager.TransactionManager[*leveldb.Transaction]
+	ldbUTXOStore keyvaluestore.StoreWithTxManager[*leveldb.Transaction]
 
 	// logger is the logger used by the service.
 	logger *zerolog.Logger
 }
 
-func NewUTXOStoreService(
+func New(
 	s UTXOStore,
 
-	txManager *txmanager.TxManager[*leveldb.Transaction],
-	utxoKVStore keyvaluestore.KeyValueStore[*leveldb.Transaction],
+	txManager *txmanager.TransactionManager[*leveldb.Transaction],
+	utxoKVStore keyvaluestore.StoreWithTxManager[*leveldb.Transaction],
 
-	options *UTXOServiceOptions,
-) *UTXOStoreService {
-	defaultOptions := &UTXOServiceOptions{
+	options *ServiceOptions,
+) *Service {
+	defaultOptions := &ServiceOptions{
 		Logger: zerolog.DefaultContextLogger,
 	}
 
@@ -51,7 +51,7 @@ func NewUTXOStoreService(
 		}
 	}
 
-	return &UTXOStoreService{
+	return &Service{
 		s:            s,
 		ldbUTXOStore: utxoKVStore,
 		logger:       defaultOptions.Logger,
@@ -59,13 +59,13 @@ func NewUTXOStoreService(
 	}
 }
 
-func (u *UTXOStoreService) AddFromBlock(ctx context.Context, block *blockchain.Block) error {
+func (u *Service) AddFromBlock(ctx context.Context, block *blockchain.Block) error {
 	for _, tx := range block.GetTransactions() {
 
-		outputs := make([]*store.TransactionOutput, len(tx.GetOutputs()))
+		outputs := make([]*utxostore.TransactionOutput, len(tx.GetOutputs()))
 
 		for i, output := range tx.GetOutputs() {
-			outputs[i] = &store.TransactionOutput{
+			outputs[i] = &utxostore.TransactionOutput{
 				ScriptBytes: output.ScriptPubKey.HEX,
 				Addresses:   getOutputAdresses(output),
 				Amount:      output.Value.BigFloat,
@@ -78,7 +78,7 @@ func (u *UTXOStoreService) AddFromBlock(ctx context.Context, block *blockchain.B
 				return err
 			}
 
-			utxoStoreWithTx := u.s.WithStore(storeWithTx)
+			utxoStoreWithTx := u.s.WithStorer(storeWithTx)
 
 			err = utxoStoreWithTx.AddTransactionOutputs(ctx, tx.GetID(), outputs)
 			if err != nil {

@@ -1,4 +1,4 @@
-package trmfactory
+package leveldbtx
 
 import "errors"
 

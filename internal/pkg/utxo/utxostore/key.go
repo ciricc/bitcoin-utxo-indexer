@@ -1,4 +1,4 @@
-package store
+package utxostore
 
 import (
 	"errors"
@@ -13,38 +13,38 @@ var (
 )
 
 const (
-	AddressKeyType       = "addr"
-	TransactionIDKeyType = "tx"
+	addressKeyType       = "addr"
+	transactionIDKeyType = "tx"
 )
 
-type StorageKey struct {
+type storageKey struct {
 	prefix StorageKeyType
 	key    string
 }
 
-func newTransactionIDKey(txID string) *StorageKey {
-	return &StorageKey{
-		prefix: TransactionIDKeyType,
+func newTransactionIDKey(txID string) *storageKey {
+	return &storageKey{
+		prefix: transactionIDKeyType,
 		key:    txID,
 	}
 }
 
-func StorageKeyFromString(s string) (*StorageKey, error) {
+func StorageKeyFromString(s string) (*storageKey, error) {
 	keyColumns := strings.SplitN(s, ":", 2)
 	if len(keyColumns) < 2 {
 		return nil, ErrInvalidStorageKeyFormat
 	}
 
-	return &StorageKey{
+	return &storageKey{
 		prefix: StorageKeyType(keyColumns[0]),
 		key:    keyColumns[1],
 	}, nil
 }
 
-func (s *StorageKey) String() string {
+func (s *storageKey) String() string {
 	return fmt.Sprintf("%s:%s", s.prefix, s.key)
 }
 
-func (s *StorageKey) TypeOf(t StorageKeyType) bool {
+func (s *storageKey) TypeOf(t StorageKeyType) bool {
 	return s.prefix == t
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/scanner"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/di"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxostoreservice"
+	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
 )
@@ -42,7 +42,7 @@ func main() {
 		logger.Fatal().Err(err).Msg("failed to create scanner")
 	}
 
-	utxStoreService, err := do.Invoke[*utxostoreservice.UTXOStoreService](i)
+	utxStoreService, err := do.Invoke[*utxoservice.Service](i)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to create utxo store service")
 	}

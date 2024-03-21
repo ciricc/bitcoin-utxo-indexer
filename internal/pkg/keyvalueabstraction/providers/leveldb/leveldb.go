@@ -1,10 +1,11 @@
-package keyvaluestore
+package leveldbkvstore
 
 import (
 	"errors"
 	"fmt"
 
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/txmanager"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/philippgille/gokv/encoding"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
@@ -87,7 +88,7 @@ func (l *LevelDBStore) Delete(key string) error {
 	return nil
 }
 
-func (l *LevelDBStore) WithTx(tx txmanager.Transaction[*leveldb.Transaction]) (KeyValueStore[*leveldb.Transaction], error) {
+func (l *LevelDBStore) WithTx(tx txmanager.Transaction[*leveldb.Transaction]) (keyvaluestore.StoreWithTxManager[*leveldb.Transaction], error) {
 	return &LevelDBStore{
 		db:       tx.Transaction(),
 		encoding: l.encoding,
@@ -124,4 +125,4 @@ func (l *LevelDBStore) ListKeys(si func(key string, getValue func(v interface{})
 	return nil
 }
 
-var _ KeyValueStore[*leveldb.Transaction] = (*LevelDBStore)(nil)
+var _ keyvaluestore.StoreWithTxManager[*leveldb.Transaction] = (*LevelDBStore)(nil)

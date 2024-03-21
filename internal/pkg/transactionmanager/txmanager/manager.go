@@ -5,25 +5,32 @@ import (
 	"fmt"
 )
 
+// Transaction is an interface that represents a transaction.
 type Transaction[T any] interface {
+	// Commit commits the transaction. It returns an error if the transaction cannot be committed.
 	Commit(ctx context.Context) error
+
+	// Rollback rolls back the transaction. It returns an error if the transaction cannot be rolled back.
 	Rollback(ctx context.Context) error
+
+	// Transaction returns the underlying transaction.
 	Transaction() T
 }
 
-type TxFactory[T any] func(ctx context.Context) (context.Context, Transaction[T], error)
+// TransactionFactory is a function that creates a new transaction.
+type TransactionFactory[T any] func(ctx context.Context) (context.Context, Transaction[T], error)
 
-type TxManager[T any] struct {
-	txFactory TxFactory[T]
+type TransactionManager[T any] struct {
+	txFactory TransactionFactory[T]
 }
 
-func NewTxManager[T any](factory TxFactory[T]) *TxManager[T] {
-	return &TxManager[T]{
+func New[T any](factory TransactionFactory[T]) *TransactionManager[T] {
+	return &TransactionManager[T]{
 		txFactory: factory,
 	}
 }
 
-func (t *TxManager[T]) Do(fn func(ctx context.Context, tx Transaction[T]) error) error {
+func (t *TransactionManager[T]) Do(fn func(ctx context.Context, tx Transaction[T]) error) error {
 	if t.txFactory == nil {
 		return fmt.Errorf("txFactory is nil")
 	}

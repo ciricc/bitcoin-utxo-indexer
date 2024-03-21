@@ -1,4 +1,4 @@
-package store
+package utxostore
 
 import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bigjson"
