@@ -13,5 +13,5 @@ var (
 )
 
 func newBadStatusCodeError(statusCode int) error {
-	return fmt.Errorf("bad status code (%d): %w", ErrBadStatusCode)
+	return fmt.Errorf("bad status code (%d): %w", statusCode, ErrBadStatusCode)
 }
