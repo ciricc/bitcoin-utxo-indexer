@@ -22,12 +22,12 @@ type Config struct {
 		ConcurrentBlocksDownloadLimit int64 `yaml:"concurrentBlocksDownloadLimit"`
 	} `yaml:"blockchainBlocksIterator"`
 
-	ScannerState struct {
-		StartFromBlockHash string `yaml:"startFromBlockHash"`
-		RedisStore         struct {
-			Host string `yaml:"host"`
-		} `yaml:"redisStore"`
-	} `yaml:"scannerState"`
+	Scanner struct {
+		Enabled bool `yaml:"enabled"`
+		State   struct {
+			StartFromBlockHash string `yaml:"startFromBlockHash"`
+		} `yaml:"state"`
+	}
 
 	UTXO struct {
 		Service struct {
@@ -40,6 +40,9 @@ type Config struct {
 			LevelDB struct {
 				Path string `yaml:"path"`
 			} `yaml:"leveldb"`
+			Redis struct {
+				Host string `yaml:"host"`
+			}
 		} `yaml:"storage"`
 	} `yaml:"utxo"`
 }
@@ -61,6 +64,13 @@ func (c Config) Validate() error {
 	}
 
 	if err := validation.ValidateStruct(
+		&c.UTXO.Storage.Redis,
+		validation.Field(&c.UTXO.Storage.Redis.Host, validation.Required, is.DialString),
+	); err != nil {
+		return fmt.Errorf("failed to validate utxo redis store options: %w", err)
+	}
+
+	if err := validation.ValidateStruct(
 		&c.BlockchainBlocksIterator,
 		validation.Field(&c.BlockchainBlocksIterator.BlockHeadersBufferSize, validation.Required, validation.Min(1)),
 		validation.Field(&c.BlockchainBlocksIterator.ConcurrentBlocksDownloadLimit, validation.Required, validation.Min(1)),
@@ -69,10 +79,10 @@ func (c Config) Validate() error {
 	}
 
 	if err := validation.ValidateStruct(
-		&c.ScannerState,
-		validation.Field(&c.ScannerState.StartFromBlockHash, validation.Required, is.Hexadecimal),
+		&c.Scanner.State,
+		validation.Field(&c.Scanner.State.StartFromBlockHash, validation.Required, is.Hexadecimal),
 	); err != nil {
-		return fmt.Errorf("failed to validate scannerState options: %w", err)
+		return fmt.Errorf("failed to validate scanner state options: %w", err)
 	}
 
 	if err := validation.ValidateStruct(
@@ -80,13 +90,6 @@ func (c Config) Validate() error {
 		validation.Field(&c.UTXO.Service.GRPC.Address, validation.Required, is.DialString),
 	); err != nil {
 		return fmt.Errorf("failed to validate utxo grpc service options: %w", err)
-	}
-
-	if err := validation.ValidateStruct(
-		&c.ScannerState.RedisStore,
-		validation.Field(&c.ScannerState.RedisStore.Host, validation.Required, is.DialString),
-	); err != nil {
-		return fmt.Errorf("failed to validate redisStore options: %w", err)
 	}
 
 	if err := validation.ValidateStruct(

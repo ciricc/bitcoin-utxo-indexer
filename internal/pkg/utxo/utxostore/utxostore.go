@@ -33,6 +33,47 @@ func (u *Store) WithStorer(storer keyvaluestore.Store) *Store {
 	}
 }
 
+func (u *Store) GetBlockHeight(_ context.Context) (int64, error) {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+
+	blockHeightKey := newBlockheightKey()
+
+	var currentBlockHeight int64
+
+	_, err := u.s.Get(blockHeightKey.String(), &currentBlockHeight)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get current block height: %w", err)
+	}
+
+	return currentBlockHeight, nil
+}
+
+func (u *Store) SetBlockHeight(_ context.Context, blockHeight int64) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	blockHeightKey := newBlockheightKey()
+
+	var currentBlockHeight int64
+
+	_, err := u.s.Get(blockHeightKey.String(), &currentBlockHeight)
+	if err != nil {
+		return fmt.Errorf("failed to get current block height: %w", err)
+	}
+
+	if blockHeight <= currentBlockHeight {
+		return ErrIsPreviousBlockHeight
+	}
+
+	err = u.s.Set(blockHeightKey.String(), blockHeight)
+	if err != nil {
+		return fmt.Errorf("failed to store new block height: %w", err)
+	}
+
+	return nil
+}
+
 func (u *Store) GetUnspentOutputsByAddress(_ context.Context, address string) ([]*TransactionOutput, error) {
 	u.mu.RLock()
 	defer u.mu.RUnlock()

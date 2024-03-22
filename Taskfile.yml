@@ -7,7 +7,7 @@ tasks:
         --go-grpc_out=.\
         --go-grpc_opt=module=$(task gomod)\
         api/grpc/proto/*.proto
-  
+
   gomod: go mod edit -json | jq -r '.Module.Path'
 
 

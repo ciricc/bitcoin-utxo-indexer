@@ -5,6 +5,14 @@ option go_package = "github.com/ciricc/btc-utxo-indexer/pkg/api/grpc/UTXO";
 service UTXO {
 	// GetByAddress returns list of UTXO by address
 	rpc GetByAddress(GetByAddressRequest) returns (GetByAddressResponse);
+
+	// GetBlockHeight returns the number of the block last synced with in UTXO storage
+	rpc GetBlockHeight(GetBlockHeightRequest) returns (GetBlockHeightResponse);
+}
+
+message GetBlockHeightRequest {}
+message GetBlockHeightResponse {
+	int64 block_height = 1;
 }
 
 message GetByAddressRequest {

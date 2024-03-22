@@ -15,11 +15,19 @@ var (
 const (
 	addressKeyType       = "addr"
 	transactionIDKeyType = "tx"
+	blockheightKeyType   = "bh"
 )
 
 type storageKey struct {
 	prefix StorageKeyType
 	key    string
+}
+
+func newBlockheightKey() *storageKey {
+	return &storageKey{
+		prefix: blockheightKeyType,
+		key:    "current",
+	}
 }
 
 func newAddressUTXOTxIDsKey(address string) *storageKey {

@@ -9,23 +9,43 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 )
+
+type RESTClientOptions struct {
+	RequestTimeout time.Duration
+}
 
 type RESTClient struct {
 	nodeRestURL *url.URL
 	c           *http.Client
 }
 
-func New(nodeRestURL *url.URL) (*RESTClient, error) {
+func New(nodeRestURL *url.URL, opts *RESTClientOptions) (*RESTClient, error) {
 	if nodeRestURL == nil {
 		return nil, ErrNodeHostNotSpecified
 	}
 
+	defaultOptions := &RESTClientOptions{
+		RequestTimeout: 10 * time.Second,
+	}
+
+	if opts != nil {
+		if opts.RequestTimeout != 0 {
+			defaultOptions.RequestTimeout = opts.RequestTimeout
+		}
+	}
+
+	httpClient := http.Client{
+		Transport: http.DefaultTransport,
+		Timeout:   defaultOptions.RequestTimeout,
+	}
+
 	return &RESTClient{
 		nodeRestURL: nodeRestURL,
-		c:           http.DefaultClient,
+		c:           &httpClient,
 	}, nil
 }
 

@@ -2,14 +2,15 @@ package utxoservice
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 type UTXOStore interface {
@@ -18,6 +19,7 @@ type UTXOStore interface {
 	SpendOutput(_ context.Context, txID string, idx int) (*utxostore.TransactionOutput, error)
 	WithStorer(storer keyvaluestore.Store) *utxostore.Store
 	GetUnspentOutputsByAddress(_ context.Context, address string) ([]*utxostore.TransactionOutput, error)
+	GetBlockHeight(_ context.Context) (int64, error)
 }
 
 type ServiceOptions struct {
@@ -27,8 +29,8 @@ type ServiceOptions struct {
 type Service struct {
 	s UTXOStore
 
-	txManager    *txmanager.TransactionManager[*leveldb.Transaction]
-	ldbUTXOStore keyvaluestore.StoreWithTxManager[*leveldb.Transaction]
+	txManager    *txmanager.TransactionManager[*redis.Tx]
+	ldbUTXOStore keyvaluestore.StoreWithTxManager[*redis.Tx]
 
 	// logger is the logger used by the service.
 	logger *zerolog.Logger
@@ -37,8 +39,8 @@ type Service struct {
 func New(
 	s UTXOStore,
 
-	txManager *txmanager.TransactionManager[*leveldb.Transaction],
-	utxoKVStore keyvaluestore.StoreWithTxManager[*leveldb.Transaction],
+	txManager *txmanager.TransactionManager[*redis.Tx],
+	utxoKVStore keyvaluestore.StoreWithTxManager[*redis.Tx],
 
 	options *ServiceOptions,
 ) *Service {
@@ -60,6 +62,15 @@ func New(
 	}
 }
 
+func (u *Service) GetBlockHeight(ctx context.Context) (int64, error) {
+	height, err := u.s.GetBlockHeight(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get block height from store: %w", err)
+	}
+
+	return height, nil
+}
+
 func (u *Service) GetUTXOByAddress(ctx context.Context, address string) ([]bool, error) {
 	outputs, err := u.s.GetUnspentOutputsByAddress(ctx, address)
 	if err != nil {
@@ -79,13 +90,21 @@ func (u *Service) GetUTXOByAddress(ctx context.Context, address string) ([]bool,
 }
 
 func (u *Service) AddFromBlock(ctx context.Context, block *blockchain.Block) error {
-	return u.txManager.Do(func(ctx context.Context, ldbTx txmanager.Transaction[*leveldb.Transaction]) error {
+	return u.txManager.Do(func(ctx context.Context, ldbTx txmanager.Transaction[*redis.Tx]) error {
 		storeWithTx, err := u.ldbUTXOStore.WithTx(ldbTx)
 		if err != nil {
 			return err
 		}
 
 		utxoStoreWithTx := u.s.WithStorer(storeWithTx)
+
+		if err := utxoStoreWithTx.SetBlockHeight(ctx, block.GetHeight()); err != nil {
+			if errors.Is(err, utxostore.ErrIsPreviousBlockHeight) {
+				return ErrBlockAlreadyStored
+			}
+
+			return err
+		}
 
 		for _, tx := range block.GetTransactions() {
 
@@ -105,7 +124,6 @@ func (u *Service) AddFromBlock(ctx context.Context, block *blockchain.Block) err
 		}
 
 		return nil
-		// return fmt.Errorf("rollback it, please")
 	})
 }
 

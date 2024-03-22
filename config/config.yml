@@ -10,20 +10,18 @@ blockchainBlocksIterator:
   # How much headers we can store in memory
   # The more we store, the faster we can iterate over the blockchain
   # by downloading blocks in parallel
-  blockHeadersBufferSize: 1 
+  blockHeadersBufferSize: 64 
 
   # How much blocks we can request from the Bitcoin Core node at once
   # The more we request, the faster we can iterate over the blockchain
-  # But it also increases the memory usage on the bitcoin node side and the network traffic usage
-  concurrentBlocksDownloadLimit: 1 
+  # But it also increases thej memory usage on the bitcoin node side and the network traffic usage
+  concurrentBlocksDownloadLimit: 128 
 
-scannerState:
-  # From which block we should start scanning the blockchain if there is no state in the Redis
-  startFromBlockHash: 000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f
-
-  # Redis storage configration for the scanner state
-  redisStore:
-    host: localhost:6379
+scanner:
+  enabled: true 
+  state:
+    # From which block we should start scanning the blockchain if there is no state in the Redis
+    startFromBlockHash: 000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f 
     
 utxo:
   service:
@@ -33,3 +31,7 @@ utxo:
   storage:
     leveldb:
       path: /var/lib/utxostore
+
+    # Redis storage configration for the scanner state
+    redis:
+      host: localhost:6379

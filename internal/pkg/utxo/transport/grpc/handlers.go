@@ -11,6 +11,7 @@ import (
 type UTXOService interface {
 	// GetUTXOByAdress must return list of UTXO of the address
 	GetUTXOByAddress(ctx context.Context, address string) ([]bool, error)
+	GetBlockHeight(ctx context.Context) (int64, error)
 }
 
 type UTXOGrpcHandlers struct {
@@ -24,6 +25,20 @@ func New(service UTXOService) *UTXOGrpcHandlers {
 		UnimplementedUTXOServer: UTXO.UnimplementedUTXOServer{},
 		s:                       service,
 	}
+}
+
+func (u *UTXOGrpcHandlers) GetBlockHeight(
+	ctx context.Context,
+	_ *UTXO.GetBlockHeightRequest,
+) (*UTXO.GetBlockHeightResponse, error) {
+	height, err := u.s.GetBlockHeight(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &UTXO.GetBlockHeightResponse{
+		BlockHeight: height,
+	}, nil
 }
 
 func (u *UTXOGrpcHandlers) GetByAddress(

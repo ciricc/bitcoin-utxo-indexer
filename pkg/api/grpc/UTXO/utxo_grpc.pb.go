@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	UTXO_GetByAddress_FullMethodName = "/UTXO/GetByAddress"
+	UTXO_GetByAddress_FullMethodName   = "/UTXO/GetByAddress"
+	UTXO_GetBlockHeight_FullMethodName = "/UTXO/GetBlockHeight"
 )
 
 // UTXOClient is the client API for UTXO service.
@@ -28,6 +29,8 @@ const (
 type UTXOClient interface {
 	// GetByAddress returns list of UTXO by address
 	GetByAddress(ctx context.Context, in *GetByAddressRequest, opts ...grpc.CallOption) (*GetByAddressResponse, error)
+	// GetBlockHeight returns the number of the block last synced with in UTXO storage
+	GetBlockHeight(ctx context.Context, in *GetBlockHeightRequest, opts ...grpc.CallOption) (*GetBlockHeightResponse, error)
 }
 
 type uTXOClient struct {
@@ -47,12 +50,23 @@ func (c *uTXOClient) GetByAddress(ctx context.Context, in *GetByAddressRequest, 
 	return out, nil
 }
 
+func (c *uTXOClient) GetBlockHeight(ctx context.Context, in *GetBlockHeightRequest, opts ...grpc.CallOption) (*GetBlockHeightResponse, error) {
+	out := new(GetBlockHeightResponse)
+	err := c.cc.Invoke(ctx, UTXO_GetBlockHeight_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UTXOServer is the server API for UTXO service.
 // All implementations must embed UnimplementedUTXOServer
 // for forward compatibility
 type UTXOServer interface {
 	// GetByAddress returns list of UTXO by address
 	GetByAddress(context.Context, *GetByAddressRequest) (*GetByAddressResponse, error)
+	// GetBlockHeight returns the number of the block last synced with in UTXO storage
+	GetBlockHeight(context.Context, *GetBlockHeightRequest) (*GetBlockHeightResponse, error)
 	mustEmbedUnimplementedUTXOServer()
 }
 
@@ -62,6 +76,9 @@ type UnimplementedUTXOServer struct {
 
 func (UnimplementedUTXOServer) GetByAddress(context.Context, *GetByAddressRequest) (*GetByAddressResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetByAddress not implemented")
+}
+func (UnimplementedUTXOServer) GetBlockHeight(context.Context, *GetBlockHeightRequest) (*GetBlockHeightResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockHeight not implemented")
 }
 func (UnimplementedUTXOServer) mustEmbedUnimplementedUTXOServer() {}
 
@@ -94,6 +111,24 @@ func _UTXO_GetByAddress_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UTXO_GetBlockHeight_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBlockHeightRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UTXOServer).GetBlockHeight(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UTXO_GetBlockHeight_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UTXOServer).GetBlockHeight(ctx, req.(*GetBlockHeightRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UTXO_ServiceDesc is the grpc.ServiceDesc for UTXO service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -104,6 +139,10 @@ var UTXO_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetByAddress",
 			Handler:    _UTXO_GetByAddress_Handler,
+		},
+		{
+			MethodName: "GetBlockHeight",
+			Handler:    _UTXO_GetBlockHeight_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -23,14 +24,19 @@ func main() {
 	do.Provide(i, di.NewConfig)
 	do.Provide(i, di.NewLogger)
 	do.Provide(i, di.NewShutdowner)
-	do.Provide(i, di.NewRedisClient)
 	do.Provide(i, di.NewScannerState)
 	do.Provide(i, di.NewBitcoinBlocksIterator)
 	do.Provide(i, di.NewBlockchainScanner)
 	do.Provide(i, di.NewUTXOStore)
-	do.Provide(i, di.NewUTXOLevelDB)
-	do.Provide(i, di.NewUTXOLevelDBStore)
-	do.Provide(i, di.NewLevelDBTxManager)
+
+	// do.Provide(i, di.NewUTXOLevelDB)
+	// do.Provide(i, di.NewUTXOLevelDBStore)
+	// do.Provide(i, di.NewLevelDBTxManager)
+
+	do.Provide(i, di.NewUTXORedisStore)
+	do.Provide(i, di.NewUTXORedis)
+	do.Provide(i, di.NewRedisTxManager)
+
 	do.Provide(i, di.NewUTXOStoreService)
 	do.Provide(i, di.NewGRPCServer)
 	do.Provide(i, di.NewUTXOGRPCHandlers)
@@ -79,32 +85,40 @@ func main() {
 			logger.Fatal().Err(err).Msg("failed to listen grpc server")
 		}
 
+		logger.Info().Str("address", cfg.UTXO.Service.GRPC.Address).Msg("UTXO grpc server started")
+
 		if err := grpcServer.Serve(ln); err != nil {
 			logger.Fatal().Err(err).Msg("failed to start grpc server")
 		}
 	}()
 
-	go func() {
-		if err := scanner.Start(ctx, func(ctx context.Context, block *blockchain.Block) error {
-			logger.Info().Str("hash", block.GetHash().String()).Msg("got new block")
+	if cfg.Scanner.Enabled {
+		logger.Info().Msg("scanner started")
 
-			if err := utxStoreService.AddFromBlock(ctx, block); err != nil {
-				return fmt.Errorf("failed to store UTXO from block: %w", err)
+		go func() {
+			if err := scanner.Start(ctx, func(ctx context.Context, block *blockchain.Block) error {
+				logger.Info().Str("hash", block.GetHash().String()).Msg("got new block")
+
+				if err := utxStoreService.AddFromBlock(ctx, block); err != nil {
+					if !errors.Is(err, utxoservice.ErrBlockAlreadyStored) {
+						return fmt.Errorf("failed to store UTXO from block: %w", err)
+					}
+				}
+
+				if err := scannerState.UpdateLastScannedBlockHash(ctx, block.Hash.String()); err != nil {
+					return fmt.Errorf("failed to update last scanner block hash: %w", err)
+				}
+
+				logger.Info().Str("hash", block.GetHash().String()).Msg("scanned new block")
+
+				return nil
+			}); err != nil {
+				logger.Fatal().Err(err).Msg("failed to start scanner")
 			}
-
-			// TODO: This must be in the same transaction or AddFromBlock must be written with the
-			// last proceeded block hash identifier to prevent the "not found output" error
-			if err := scannerState.UpdateLastScannedBlockHash(ctx, block.Hash.String()); err != nil {
-				return fmt.Errorf("failed to update last scanner block hash: %w", err)
-			}
-
-			logger.Info().Str("hash", block.GetHash().String()).Msg("scanned new block")
-
-			return nil
-		}); err != nil {
-			logger.Fatal().Err(err).Msg("failed to start scanner")
-		}
-	}()
+		}()
+	} else {
+		logger.Warn().Msg("scanner is disabled")
+	}
 
 	go func() {
 		<-ctx.Done()

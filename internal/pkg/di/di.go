@@ -12,17 +12,18 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/state"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 	leveldbkvstore "github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/leveldb"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/rediskvstore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/logger"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/shutdown"
 	leveldbtx "github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/drivers/leveldb"
+	redistx "github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/drivers/redis"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
 	grpchandlers "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/transport/grpc"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/ciricc/btc-utxo-indexer/pkg/api/grpc/UTXO"
-	"github.com/philippgille/gokv/encoding"
-	redis "github.com/philippgille/gokv/redis"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -103,6 +104,27 @@ func NewUTXOLevelDB(i *do.Injector) (*leveldb.DB, error) {
 	return db, nil
 }
 
+func NewUTXORedisStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[*redis.Tx], error) {
+	cfg, err := do.Invoke[*config.Config](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke configuration: %w", err)
+	}
+
+	logger, err := do.Invoke[*zerolog.Logger](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke logger: %w", err)
+	}
+
+	redis, err := do.Invoke[*redis.Client](i)
+	if err != nil {
+		return nil, fmt.Errorf("invoke redis error: %w", err)
+	}
+
+	logger.Info().Str("redisHost", cfg.UTXO.Storage.Redis.Host).Msg("initalizing redis UTXO")
+
+	return rediskvstore.New(redis), nil
+}
+
 func NewUTXOLevelDBStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[*leveldb.Transaction], error) {
 	cfg, err := do.Invoke[*config.Config](i)
 	if err != nil {
@@ -129,25 +151,21 @@ func NewUTXOLevelDBStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[*leve
 	return store, nil
 }
 
-func NewRedisClient(i *do.Injector) (*redis.Client, error) {
+func NewUTXORedis(i *do.Injector) (*redis.Client, error) {
 	cfg, err := do.Invoke[*config.Config](i)
 	if err != nil {
 		return nil, fmt.Errorf("invoke config error: %w", err)
 	}
 
-	client, err := redis.NewClient(redis.Options{
-		Codec:   encoding.JSON,
-		Address: cfg.ScannerState.RedisStore.Host,
+	client := redis.NewClient(&redis.Options{
+		Addr: cfg.UTXO.Storage.Redis.Host,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create redis client: %w", err)
-	}
 
-	return &client, nil
+	return client, nil
 }
 
 func NewScannerState(i *do.Injector) (*state.KeyValueScannerState, error) {
-	levelDBKeyValueStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*leveldb.Transaction]](i)
+	kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*redis.Tx]](i)
 	if err != nil {
 		return nil, fmt.Errorf("invoke key value store error: %w", err)
 	}
@@ -158,8 +176,8 @@ func NewScannerState(i *do.Injector) (*state.KeyValueScannerState, error) {
 	}
 
 	state := state.NewStateWithKeyValueStore(
-		cfg.ScannerState.StartFromBlockHash,
-		levelDBKeyValueStore,
+		cfg.Scanner.State.StartFromBlockHash,
+		kvStore,
 	)
 
 	return state, nil
@@ -191,12 +209,12 @@ func NewShutdowner(i *do.Injector) (*shutdown.Shutdowner, error) {
 }
 
 func NewUTXOStore(i *do.Injector) (*utxostore.Store, error) {
-	levelDBStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*leveldb.Transaction]](i)
+	redisStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*redis.Tx]](i)
 	if err != nil {
-		return nil, fmt.Errorf("failed to invoke redis client: %w", err)
+		return nil, fmt.Errorf("invoke redis store error: %w", err)
 	}
 
-	store, err := utxostore.New(levelDBStore)
+	store, err := utxostore.New(redisStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create UTXO store: %w", err)
 	}
@@ -210,7 +228,7 @@ func NewUTXOStoreService(i *do.Injector) (*utxoservice.Service, error) {
 		return nil, fmt.Errorf("failed to invoke UTXO store: %w", err)
 	}
 
-	utxoKVStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*leveldb.Transaction]](i)
+	utxoKVStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*redis.Tx]](i)
 	if err != nil {
 		return nil, fmt.Errorf("failed to invoke UTXO KV store: %w", err)
 	}
@@ -220,7 +238,7 @@ func NewUTXOStoreService(i *do.Injector) (*utxoservice.Service, error) {
 		return nil, fmt.Errorf("failed to invoke logger: %w", err)
 	}
 
-	txManager, err := do.Invoke[*txmanager.TransactionManager[*leveldb.Transaction]](i)
+	txManager, err := do.Invoke[*txmanager.TransactionManager[*redis.Tx]](i)
 	if err != nil {
 		return nil, fmt.Errorf("failed to invoke tx manager: %w", err)
 	}
@@ -269,6 +287,17 @@ func NewGRPCServer(i *do.Injector) (*grpc.Server, error) {
 	reflection.Register(server)
 
 	return server, nil
+}
+
+func NewRedisTxManager(i *do.Injector) (*txmanager.TransactionManager[*redis.Tx], error) {
+	redis, err := do.Invoke[*redis.Client](i)
+	if err != nil {
+		return nil, fmt.Errorf("redis invoke error: %w", err)
+	}
+
+	txManager := txmanager.New(redistx.NewRedisTransactionFactory(redis))
+
+	return txManager, nil
 }
 
 func NewLevelDBTxManager(i *do.Injector) (*txmanager.TransactionManager[*leveldb.Transaction], error) {

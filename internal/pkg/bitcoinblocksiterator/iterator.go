@@ -31,7 +31,7 @@ func NewBitcoinBlocksIterator(
 		return nil, err
 	}
 
-	restClient, err := restclient.New(nodeHost)
+	restClient, err := restclient.New(nodeHost, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rest client: %w", err)
 	}
