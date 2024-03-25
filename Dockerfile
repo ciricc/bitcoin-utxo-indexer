@@ -1,6 +1,6 @@
 # Use the official Golang image to create a build artifact.
 # This image is based on Debian, so if you need alpine or another base, adjust accordingly.
-FROM golang:1.22 as builder
+FROM golang:1.22-alpine as builder
 
 # Set the Current Working Directory inside the container.
 WORKDIR /app
