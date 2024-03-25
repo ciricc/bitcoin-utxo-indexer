@@ -29,7 +29,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
 	"github.com/syndtr/goleveldb/leveldb"
-	configLoader "gitlab.enigmagroup.tech/enigma/evo-wallet/evo-backend/common/config"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -397,7 +396,7 @@ func NewConfig(_ *do.Injector) (*config.Config, error) {
 	}
 
 	var cfg config.Config
-	if err := configLoader.LoadServiceConfig(&cfg, configFilePath); err != nil {
+	if err := config.LoadServiceConfig(&cfg, configFilePath); err != nil {
 		return nil, fmt.Errorf("error loading config: %w", err)
 	}
 
