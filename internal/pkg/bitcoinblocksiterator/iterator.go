@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
-	"sync"
 	"time"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/semaphore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/restclient"
-	"github.com/cskr/pubsub"
+	"github.com/puzpuzpuz/xsync"
 )
 
 // BitcoinBlocksIterator is an iterator for getting the blocks from the bitcoin blockchain
@@ -73,20 +72,19 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 		Msg("begin downloading blocks")
 
 	downloadedBlocks := make(chan *blockchain.Block, s.opts.concurrentBlocksDownloadLimit)
+	orderingBlocks := xsync.NewMapOf[*blockchain.Block]()
+
+	expectedNextHashToSend := startedFrom
 
 	go func() {
 		defer close(downloadedBlocks)
-		defer s.opts.logger.Info().Msg("stopped downloading blocks")
+		defer s.opts.logger.Info().Msg("stopkped downloading blocks")
 
 		// The pub/sub for subscribe to the previous block download event
 		// It is needed for make from disordered blocks chain to ordered after download of them
 		// completed
 		// So, the handler will handle whole blockchain in the right order block-by-block
 		// withoout download speed reducing
-		downloadedBlocksPubSub := pubsub.New(s.opts.blockHeadersBufferSize)
-		defer downloadedBlocksPubSub.Shutdown()
-
-		sentBlocks := sync.Map{}
 
 		// Limiting the number of concurrent goroutines to download the blocks
 		downloadBlocksSemaphore := semaphore.New(s.opts.concurrentBlocksDownloadLimit)
@@ -136,26 +134,28 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 					Int64("size", block.GetSize()).
 					Msg("downloaded the block")
 
-				// Waiting for sending previous block if current block is no a genesis
-				// and current block is not the first block we started from
-				if len(header.GetPrevBlockHash().String()) != 0 && startedFrom.String() != header.GetHash().String() {
-					if _, ok := sentBlocks.Load(header.GetPrevBlockHash().String()); !ok {
-						<-downloadedBlocksPubSub.SubOnce(header.GetPrevBlockHash().String())
+				checkAndSendNextBlock := func() {
+					// Continuously check if the next block is in the buffer and send it if present.
+					for nextBlock, ok := orderingBlocks.Load(expectedNextHashToSend.String()); ok; nextBlock, ok = orderingBlocks.Load(expectedNextHashToSend.String()) {
+						downloadedBlocks <- nextBlock
+						orderingBlocks.Delete(expectedNextHashToSend.String())
+						expectedNextHashToSend = nextBlock.GetHash()
 					}
 				}
 
 				select {
 				case <-ctx.Done():
 				default:
-					// Sending the downloaded block only if process is not cancelled
-					// Because this channel may be closed before the block is sent
-					downloadedBlocks <- block
+					if block.GetHash().String() == expectedNextHashToSend.String() {
+						downloadedBlocks <- block
+						expectedNextHashToSend = block.NextBlockHash
+						checkAndSendNextBlock()
+					} else {
+						// we need to store this block for the next processing
+						orderingBlocks.Store(block.GetHash().String(), block)
+						checkAndSendNextBlock()
+					}
 				}
-
-				sentBlocks.Delete(header.GetPrevBlockHash().String())
-				sentBlocks.Store(header.GetHash().String(), true)
-
-				downloadedBlocksPubSub.TryPub(true, header.GetHash().String())
 			}()
 		}
 	}()
