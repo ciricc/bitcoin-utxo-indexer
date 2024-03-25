@@ -37,6 +37,10 @@ type Config struct {
 		} `yaml:"service"`
 
 		Storage struct {
+			InMemory struct {
+				PersistenceFilePath string `yaml:"persistenceFilePath"`
+			} `yaml:"inMemory"`
+
 			LevelDB struct {
 				Path string `yaml:"path"`
 			} `yaml:"leveldb"`
@@ -54,6 +58,13 @@ func (c Config) Validate() error {
 		validation.Field(&c.BlockchainNode.RestURL, validation.Required, is.URL),
 	); err != nil {
 		return fmt.Errorf("failed to validate blockchainNode options: %w", err)
+	}
+
+	if err := validation.ValidateStruct(
+		&c.UTXO.Storage.InMemory,
+		validation.Field(&c.UTXO.Storage.InMemory.PersistenceFilePath, validation.Length(0, -1)),
+	); err != nil {
+		return fmt.Errorf("in-memory configuration validation error: %w", err)
 	}
 
 	if err := validation.ValidateStruct(

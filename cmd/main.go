@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime/pprof"
+	"time"
 
 	"github.com/ciricc/btc-utxo-indexer/config"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/scanner"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/state"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/di"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/inmemorykvstore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
 	"github.com/rs/zerolog"
@@ -19,23 +22,53 @@ import (
 )
 
 func main() {
+
+	// Create a CPU profile file
+	cpuProfileFile, err := os.Create("cpu.prof")
+	if err != nil {
+		panic(err)
+	}
+
+	defer cpuProfileFile.Close()
+
+	go func() {
+		for {
+			// Start CPU profiling
+			if err := pprof.StartCPUProfile(cpuProfileFile); err != nil {
+				panic(err)
+			}
+
+			time.Sleep(10 * time.Second)
+
+			cpuProfileFile.Truncate(0)
+			cpuProfileFile.Seek(0, 0)
+
+			pprof.StopCPUProfile()
+		}
+	}()
+
 	i := do.New()
 
 	do.Provide(i, di.NewConfig)
 	do.Provide(i, di.NewLogger)
 	do.Provide(i, di.NewShutdowner)
-	do.Provide(i, di.NewScannerState)
+	do.Provide(i, di.NewScannerStateWithInMemoryStore)
 	do.Provide(i, di.NewBitcoinBlocksIterator)
 	do.Provide(i, di.NewBlockchainScanner)
-	do.Provide(i, di.NewUTXOStore)
 
+	// do.Provide(i, di.NewUTXOStoreWithLevelDB)
 	// do.Provide(i, di.NewUTXOLevelDB)
 	// do.Provide(i, di.NewUTXOLevelDBStore)
 	// do.Provide(i, di.NewLevelDBTxManager)
 
-	do.Provide(i, di.NewUTXORedisStore)
-	do.Provide(i, di.NewUTXORedis)
-	do.Provide(i, di.NewRedisTxManager)
+	do.Provide(i, di.NewInMemoryStore)
+	do.Provide(i, di.NewUTXOInMemoryStore)
+	do.Provide(i, di.NewInMemoryTxManager)
+	do.Provide(i, di.NewUTXOStoreWithInMemoryStore)
+
+	// do.Provide(i, di.NewUTXORedisStore)
+	// do.Provide(i, di.NewUTXORedis)
+	// do.Provide(i, di.NewRedisTxManager)
 
 	do.Provide(i, di.NewUTXOStoreService)
 	do.Provide(i, di.NewGRPCServer)
@@ -59,7 +92,7 @@ func main() {
 		logger.Fatal().Err(err).Msg("failed to create scanner")
 	}
 
-	utxStoreService, err := do.Invoke[*utxoservice.Service](i)
+	utxStoreService, err := do.Invoke[*utxoservice.Service[*inmemorykvstore.Store]](i)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to create utxo store service")
 	}

@@ -9,7 +9,6 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
-	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
 
@@ -26,24 +25,24 @@ type ServiceOptions struct {
 	Logger *zerolog.Logger
 }
 
-type Service struct {
+type Service[T any] struct {
 	s UTXOStore
 
-	txManager    *txmanager.TransactionManager[*redis.Tx]
-	ldbUTXOStore keyvaluestore.StoreWithTxManager[*redis.Tx]
+	txManager    *txmanager.TransactionManager[T]
+	ldbUTXOStore keyvaluestore.StoreWithTxManager[T]
 
 	// logger is the logger used by the service.
 	logger *zerolog.Logger
 }
 
-func New(
+func New[T any](
 	s UTXOStore,
 
-	txManager *txmanager.TransactionManager[*redis.Tx],
-	utxoKVStore keyvaluestore.StoreWithTxManager[*redis.Tx],
+	txManager *txmanager.TransactionManager[T],
+	utxoKVStore keyvaluestore.StoreWithTxManager[T],
 
 	options *ServiceOptions,
-) *Service {
+) *Service[T] {
 	defaultOptions := &ServiceOptions{
 		Logger: zerolog.DefaultContextLogger,
 	}
@@ -54,7 +53,7 @@ func New(
 		}
 	}
 
-	return &Service{
+	return &Service[T]{
 		s:            s,
 		ldbUTXOStore: utxoKVStore,
 		logger:       defaultOptions.Logger,
@@ -62,7 +61,7 @@ func New(
 	}
 }
 
-func (u *Service) GetBlockHeight(ctx context.Context) (int64, error) {
+func (u *Service[T]) GetBlockHeight(ctx context.Context) (int64, error) {
 	height, err := u.s.GetBlockHeight(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get block height from store: %w", err)
@@ -71,7 +70,7 @@ func (u *Service) GetBlockHeight(ctx context.Context) (int64, error) {
 	return height, nil
 }
 
-func (u *Service) GetUTXOByAddress(ctx context.Context, address string) ([]bool, error) {
+func (u *Service[T]) GetUTXOByAddress(ctx context.Context, address string) ([]bool, error) {
 	outputs, err := u.s.GetUnspentOutputsByAddress(ctx, address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get UTXO by address: %w", err)
@@ -89,8 +88,8 @@ func (u *Service) GetUTXOByAddress(ctx context.Context, address string) ([]bool,
 	return b, nil
 }
 
-func (u *Service) AddFromBlock(ctx context.Context, block *blockchain.Block) error {
-	return u.txManager.Do(func(ctx context.Context, ldbTx txmanager.Transaction[*redis.Tx]) error {
+func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) error {
+	return u.txManager.Do(func(ctx context.Context, ldbTx txmanager.Transaction[T]) error {
 		storeWithTx, err := u.ldbUTXOStore.WithTx(ldbTx)
 		if err != nil {
 			return err
@@ -127,7 +126,7 @@ func (u *Service) AddFromBlock(ctx context.Context, block *blockchain.Block) err
 	})
 }
 
-func (s *Service) spendOutputs(
+func (s *Service[T]) spendOutputs(
 	ctx context.Context,
 	utxoStore *utxostore.Store,
 	tx *blockchain.Transaction,

@@ -25,13 +25,13 @@ type Transaction struct {
 
 func NewTransaction(
 	ctx context.Context,
-	rediClient *redis.Client,
+	redisClient *redis.Client,
 ) (*Transaction, error) {
 	t := &Transaction{
 		isClosed: drivers.NewIsClosed(),
 		closure:  drivers.NewIsClosed(),
 		tx:       nil,
-		redis:    rediClient,
+		redis:    redisClient,
 	}
 
 	// If the transaction can't be opened, then
@@ -42,7 +42,7 @@ func NewTransaction(
 	txCreator.Add(1)
 
 	go func() {
-		err = rediClient.Watch(ctx, func(tx *redis.Tx) error {
+		err = redisClient.Watch(ctx, func(tx *redis.Tx) error {
 
 			// After we created a transaction, we need to run a pipe
 			_, err := t.tx.TxPipelined(ctx, func(p redis.Pipeliner) error {

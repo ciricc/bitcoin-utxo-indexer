@@ -10,12 +10,12 @@ blockchainBlocksIterator:
   # How much headers we can store in memory
   # The more we store, the faster we can iterate over the blockchain
   # by downloading blocks in parallel
-  blockHeadersBufferSize: 64 
+  blockHeadersBufferSize: 512 
 
   # How much blocks we can request from the Bitcoin Core node at once
   # The more we request, the faster we can iterate over the blockchain
   # But it also increases thej memory usage on the bitcoin node side and the network traffic usage
-  concurrentBlocksDownloadLimit: 128 
+  concurrentBlocksDownloadLimit: 512 
 
 scanner:
   enabled: true 
@@ -29,6 +29,9 @@ utxo:
       address: localhost:50051
 
   storage:
+    inMemory:
+      persistenceFilePath: /var/lib/utxostore_inmemory/store.gob
+
     leveldb:
       path: /var/lib/utxostore
 

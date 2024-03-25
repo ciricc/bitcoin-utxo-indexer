@@ -13,7 +13,7 @@ type Store interface {
 	Delete(key string) error
 
 	// ListKeys iterates over all keys in the store and calls the given function for each key.
-	ListKeys(si func(key string, getValue func(v interface{}) error) (ok bool, err error)) error
+	ListKeys(si func(key string, getValue func(v interface{}) error) (stop bool, err error)) error
 }
 
 type StoreWithTxManager[T any] interface {

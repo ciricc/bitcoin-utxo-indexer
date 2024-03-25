@@ -11,10 +11,12 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/scanner"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/state"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/inmemorykvstore"
 	leveldbkvstore "github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/leveldb"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/rediskvstore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/logger"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/shutdown"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/drivers/inmemorytx"
 	leveldbtx "github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/drivers/leveldb"
 	redistx "github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/drivers/redis"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
@@ -125,6 +127,31 @@ func NewUTXORedisStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[*redis.
 	return rediskvstore.New(redis), nil
 }
 
+func NewInMemoryStore(i *do.Injector) (*inmemorykvstore.Store, error) {
+	cfg, err := do.Invoke[*config.Config](i)
+	if err != nil {
+		return nil, fmt.Errorf("invoke config error: %w", err)
+	}
+
+	store, err := inmemorykvstore.New(
+		inmemorykvstore.WithPersistencePath(cfg.UTXO.Storage.InMemory.PersistenceFilePath),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create leveldb store: %w", err)
+	}
+
+	return store, nil
+}
+
+func NewUTXOInMemoryStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[*inmemorykvstore.Store], error) {
+	store, err := do.Invoke[*inmemorykvstore.Store](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create leveldb store: %w", err)
+	}
+
+	return store, nil
+}
+
 func NewUTXOLevelDBStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[*leveldb.Transaction], error) {
 	cfg, err := do.Invoke[*config.Config](i)
 	if err != nil {
@@ -164,8 +191,27 @@ func NewUTXORedis(i *do.Injector) (*redis.Client, error) {
 	return client, nil
 }
 
-func NewScannerState(i *do.Injector) (*state.KeyValueScannerState, error) {
-	kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*redis.Tx]](i)
+func NewScannerStateWithInMemoryStore(i *do.Injector) (*state.KeyValueScannerState, error) {
+	kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*inmemorykvstore.Store]](i)
+	if err != nil {
+		return nil, fmt.Errorf("invoke key value store error: %w", err)
+	}
+
+	cfg, err := do.Invoke[*config.Config](i)
+	if err != nil {
+		return nil, fmt.Errorf("invoke config error: %w", err)
+	}
+
+	state := state.NewStateWithKeyValueStore(
+		cfg.Scanner.State.StartFromBlockHash,
+		kvStore,
+	)
+
+	return state, nil
+}
+
+func NewScannerStateWithLevelDB(i *do.Injector) (*state.KeyValueScannerState, error) {
+	kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*leveldb.Transaction]](i)
 	if err != nil {
 		return nil, fmt.Errorf("invoke key value store error: %w", err)
 	}
@@ -199,22 +245,28 @@ func NewShutdowner(i *do.Injector) (*shutdown.Shutdowner, error) {
 		return nil, fmt.Errorf("failed to invoke leveldb store: %w", err)
 	}
 
+	inMemory, err := do.Invoke[*inmemorykvstore.Store](i)
+	if err != nil {
+		return nil, fmt.Errorf("invoke in-memory store error: %w", err)
+	}
+
 	shutdowner := shutdown.NewShutdowner(
 		shutdown.NewShutdownFromCloseable(kafkaSyncProducer),
 		shutdown.NewShutdownFromCloseable(redisClient),
 		shutdown.NewShutdownFromCloseable(levelDB),
+		shutdown.NewShutdownFromCloseable(inMemory),
 	)
 
 	return shutdowner, nil
 }
 
-func NewUTXOStore(i *do.Injector) (*utxostore.Store, error) {
-	redisStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*redis.Tx]](i)
+func NewUTXOStoreWithInMemoryStore(i *do.Injector) (*utxostore.Store, error) {
+	kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*inmemorykvstore.Store]](i)
 	if err != nil {
 		return nil, fmt.Errorf("invoke redis store error: %w", err)
 	}
 
-	store, err := utxostore.New(redisStore)
+	store, err := utxostore.New(kvStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create UTXO store: %w", err)
 	}
@@ -222,13 +274,27 @@ func NewUTXOStore(i *do.Injector) (*utxostore.Store, error) {
 	return store, nil
 }
 
-func NewUTXOStoreService(i *do.Injector) (*utxoservice.Service, error) {
+func NewUTXOStoreWithLevelDB(i *do.Injector) (*utxostore.Store, error) {
+	kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*leveldb.Transaction]](i)
+	if err != nil {
+		return nil, fmt.Errorf("invoke redis store error: %w", err)
+	}
+
+	store, err := utxostore.New(kvStore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create UTXO store: %w", err)
+	}
+
+	return store, nil
+}
+
+func NewUTXOStoreService(i *do.Injector) (*utxoservice.Service[*inmemorykvstore.Store], error) {
 	utxoStore, err := do.Invoke[*utxostore.Store](i)
 	if err != nil {
 		return nil, fmt.Errorf("failed to invoke UTXO store: %w", err)
 	}
 
-	utxoKVStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*redis.Tx]](i)
+	utxoKVStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*inmemorykvstore.Store]](i)
 	if err != nil {
 		return nil, fmt.Errorf("failed to invoke UTXO KV store: %w", err)
 	}
@@ -238,7 +304,7 @@ func NewUTXOStoreService(i *do.Injector) (*utxoservice.Service, error) {
 		return nil, fmt.Errorf("failed to invoke logger: %w", err)
 	}
 
-	txManager, err := do.Invoke[*txmanager.TransactionManager[*redis.Tx]](i)
+	txManager, err := do.Invoke[*txmanager.TransactionManager[*inmemorykvstore.Store]](i)
 	if err != nil {
 		return nil, fmt.Errorf("failed to invoke tx manager: %w", err)
 	}
@@ -267,7 +333,7 @@ func NewLogger(i *do.Injector) (*zerolog.Logger, error) {
 }
 
 func NewUTXOGRPCHandlers(i *do.Injector) (*grpchandlers.UTXOGrpcHandlers, error) {
-	service, err := do.Invoke[*utxoservice.Service](i)
+	service, err := do.Invoke[*utxoservice.Service[*inmemorykvstore.Store]](i)
 	if err != nil {
 		return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
 	}
@@ -296,6 +362,17 @@ func NewRedisTxManager(i *do.Injector) (*txmanager.TransactionManager[*redis.Tx]
 	}
 
 	txManager := txmanager.New(redistx.NewRedisTransactionFactory(redis))
+
+	return txManager, nil
+}
+
+func NewInMemoryTxManager(i *do.Injector) (*txmanager.TransactionManager[*inmemorykvstore.Store], error) {
+	inMemoryStore, err := do.Invoke[*inmemorykvstore.Store](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke leveldb store: %w", err)
+	}
+
+	txManager := txmanager.New(inmemorytx.NewInMemoryTransactionFactory(inMemoryStore))
 
 	return txManager, nil
 }
