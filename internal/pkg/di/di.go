@@ -235,15 +235,15 @@ func NewShutdowner(i *do.Injector) (*shutdown.Shutdowner, error) {
 		return nil, fmt.Errorf("invoke kafka sync producer error: %w", err)
 	}
 
-	redisClient, err := do.Invoke[*redis.Client](i)
-	if err != nil {
-		return nil, fmt.Errorf("invoke redis client error: %w", err)
-	}
+	// redisClient, err := do.Invoke[*redis.Client](i)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("invoke redis client error: %w", err)
+	// }
 
-	levelDB, err := do.Invoke[*leveldb.DB](i)
-	if err != nil {
-		return nil, fmt.Errorf("failed to invoke leveldb store: %w", err)
-	}
+	// levelDB, err := do.Invoke[*leveldb.DB](i)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to invoke leveldb store: %w", err)
+	// }
 
 	inMemory, err := do.Invoke[*inmemorykvstore.Store](i)
 	if err != nil {
@@ -252,8 +252,8 @@ func NewShutdowner(i *do.Injector) (*shutdown.Shutdowner, error) {
 
 	shutdowner := shutdown.NewShutdowner(
 		shutdown.NewShutdownFromCloseable(kafkaSyncProducer),
-		shutdown.NewShutdownFromCloseable(redisClient),
-		shutdown.NewShutdownFromCloseable(levelDB),
+		// shutdown.NewShutdownFromCloseable(redisClient),
+		// shutdown.NewShutdownFromCloseable(levelDB),
 		shutdown.NewShutdownFromCloseable(inMemory),
 	)
 

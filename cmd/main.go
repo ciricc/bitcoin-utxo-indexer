@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"runtime/pprof"
-	"time"
 
 	"github.com/ciricc/btc-utxo-indexer/config"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/scanner"
@@ -23,35 +21,12 @@ import (
 
 func main() {
 
-	// Create a CPU profile file
-	cpuProfileFile, err := os.Create("cpu.prof")
-	if err != nil {
-		panic(err)
-	}
-
-	defer cpuProfileFile.Close()
-
-	go func() {
-		for {
-			// Start CPU profiling
-			if err := pprof.StartCPUProfile(cpuProfileFile); err != nil {
-				panic(err)
-			}
-
-			time.Sleep(10 * time.Second)
-
-			cpuProfileFile.Truncate(0)
-			cpuProfileFile.Seek(0, 0)
-
-			pprof.StopCPUProfile()
-		}
-	}()
-
 	i := do.New()
 
 	do.Provide(i, di.NewConfig)
 	do.Provide(i, di.NewLogger)
 	do.Provide(i, di.NewShutdowner)
+
 	do.Provide(i, di.NewScannerStateWithInMemoryStore)
 	do.Provide(i, di.NewBitcoinBlocksIterator)
 	do.Provide(i, di.NewBlockchainScanner)
