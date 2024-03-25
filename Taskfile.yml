@@ -9,5 +9,6 @@ tasks:
         api/grpc/proto/*.proto
 
   gomod: go mod edit -json | jq -r '.Module.Path'
+  dockerbuild: docker build -t bitcoin-utxo-indexer -f Dockerfile .
 
 
