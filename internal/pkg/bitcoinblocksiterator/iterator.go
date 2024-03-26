@@ -88,6 +88,7 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 
 		// Limiting the number of concurrent goroutines to download the blocks
 		downloadBlocksSemaphore := semaphore.New(s.opts.concurrentBlocksDownloadLimit)
+		limitWaitingBlocksSemaphore := semaphore.New(s.opts.concurrentBlocksDownloadLimit)
 
 		for header := range headersCh {
 			// Requesting a place fo the goroutine
@@ -140,10 +141,13 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 					for nextBlock, ok := orderingBlocks.Load(expectedNextHashToSend.String()); ok; nextBlock, ok = orderingBlocks.Load(expectedNextHashToSend.String()) {
 						s.opts.logger.Debug().
 							Str("hash", nextBlock.GetHash().String()).
-							Str("nextHash", expectedNextHashToSend.String()).
+							Str("nextHash", nextBlock.GetNextBlockHash().String()).
 							Msg("sending new block")
 						downloadedBlocks <- nextBlock
+
 						orderingBlocks.Delete(expectedNextHashToSend.String())
+						limitWaitingBlocksSemaphore.Release()
+
 						expectedNextHashToSend = nextBlock.GetNextBlockHash()
 					}
 				}
@@ -151,15 +155,9 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 				select {
 				case <-ctx.Done():
 				default:
-					if block.GetHash().String() == expectedNextHashToSend.String() {
-						downloadedBlocks <- block
-						expectedNextHashToSend = block.NextBlockHash
-						checkAndSendNextBlock()
-					} else {
-						// we need to store this block for the next processing
-						orderingBlocks.Store(block.GetHash().String(), block)
-						checkAndSendNextBlock()
-					}
+					limitWaitingBlocksSemaphore.Acquire()
+					orderingBlocks.Store(block.GetHash().String(), block)
+					checkAndSendNextBlock()
 				}
 			}()
 		}
