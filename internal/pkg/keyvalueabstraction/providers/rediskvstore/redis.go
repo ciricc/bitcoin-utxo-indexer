@@ -111,11 +111,11 @@ func (r *RedisStore) Set(key string, v any) error {
 }
 
 // WithTx implements keyvaluestore.StoreWithTxManager.
-func (r *RedisStore) WithTx(tx txmanager.Transaction[*redis.Tx]) (keyvaluestore.StoreWithTxManager[*redis.Tx], error) {
+func (r *RedisStore) WithTx(tx txmanager.Transaction[redis.Pipeliner]) (keyvaluestore.StoreWithTxManager[redis.Pipeliner], error) {
 	return &RedisStore{
 		redis:  tx.Transaction(),
 		encode: r.encode,
 	}, nil
 }
 
-var _ keyvaluestore.StoreWithTxManager[*redis.Tx] = (*RedisStore)(nil)
+var _ keyvaluestore.StoreWithTxManager[redis.Pipeliner] = (*RedisStore)(nil)

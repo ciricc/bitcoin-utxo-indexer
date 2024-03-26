@@ -13,9 +13,9 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/di"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
-	"github.com/syndtr/goleveldb/leveldb"
 	"google.golang.org/grpc"
 )
 
@@ -30,26 +30,26 @@ func main() {
 	do.Provide(i, di.NewBitcoinBlocksIterator)
 	do.Provide(i, di.NewBlockchainScanner)
 
-	do.Provide(i, di.NewUTXOLevelDB)
-	do.Provide(i, di.NewUTXOLevelDBStore)
-	do.Provide(i, di.NewLevelDBTxManager)
+	// do.Provide(i, di.NewUTXOLevelDB)
+	// do.Provide(i, di.NewUTXOLevelDBStore)
+	// do.Provide(i, di.NewLevelDBTxManager)
 
 	// do.Provide(i, di.NewInMemoryStore)
 	// do.Provide(i, di.NewUTXOInMemoryStore)
 	// do.Provide(i, di.NewInMemoryTxManager)
 	// do.Provide(i, di.NewUTXOStoreWithInMemoryStore)
 
-	do.Provide(i, di.GetUTXOStoreConstructor[*leveldb.Transaction]())
+	do.Provide(i, di.GetUTXOStoreConstructor[redis.Pipeliner]())
 
-	// do.Provide(i, di.NewUTXORedisStore)
-	// do.Provide(i, di.NewUTXORedis)
-	// do.Provide(i, di.NewRedisTxManager)
+	do.Provide(i, di.NewUTXORedisStore)
+	do.Provide(i, di.NewUTXORedis)
+	do.Provide(i, di.NewRedisTxManager)
 
 	do.Provide(i, di.NewGRPCServer)
 
-	do.Provide(i, di.GetUTXOServiceConstructor[*leveldb.Transaction]())
-	do.Provide(i, di.GeUTXOGRPCHandlersConstructor[*leveldb.Transaction]())
-	do.Provide(i, di.GetScannerStateConstructor[*leveldb.Transaction]())
+	do.Provide(i, di.GetUTXOServiceConstructor[redis.Pipeliner]())
+	do.Provide(i, di.GeUTXOGRPCHandlersConstructor[redis.Pipeliner]())
+	do.Provide(i, di.GetScannerStateConstructor[redis.Pipeliner]())
 
 	logger, err := do.Invoke[*zerolog.Logger](i)
 	if err != nil {
@@ -69,7 +69,7 @@ func main() {
 		logger.Fatal().Err(err).Msg("failed to create scanner")
 	}
 
-	utxStoreService, err := do.Invoke[*utxoservice.Service[*leveldb.Transaction]](i)
+	utxStoreService, err := do.Invoke[*utxoservice.Service[redis.Pipeliner]](i)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to create utxo store service")
 	}

@@ -108,7 +108,7 @@ func NewUTXOLevelDB(i *do.Injector) (*leveldb.DB, error) {
 	return db, nil
 }
 
-func NewUTXORedisStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[*redis.Tx], error) {
+func NewUTXORedisStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[redis.Pipeliner], error) {
 	cfg, err := do.Invoke[*config.Config](i)
 	if err != nil {
 		return nil, fmt.Errorf("failed to invoke configuration: %w", err)
@@ -365,7 +365,7 @@ func NewGRPCServer(i *do.Injector) (*grpc.Server, error) {
 	return server, nil
 }
 
-func NewRedisTxManager(i *do.Injector) (*txmanager.TransactionManager[*redis.Tx], error) {
+func NewRedisTxManager(i *do.Injector) (*txmanager.TransactionManager[redis.Pipeliner], error) {
 	redis, err := do.Invoke[*redis.Client](i)
 	if err != nil {
 		return nil, fmt.Errorf("redis invoke error: %w", err)
