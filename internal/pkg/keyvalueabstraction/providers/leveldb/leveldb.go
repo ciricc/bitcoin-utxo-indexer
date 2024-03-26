@@ -67,9 +67,7 @@ func (l *LevelDBStore) Set(key string, v any) error {
 		return fmt.Errorf("failed to encode value: %w", err)
 	}
 
-	err = l.db.Put([]byte(key), value, &opt.WriteOptions{
-		Sync: false,
-	})
+	err = l.db.Put([]byte(key), value, nil)
 	if err != nil {
 		return fmt.Errorf("failed to put the key: %w", err)
 	}
@@ -78,9 +76,7 @@ func (l *LevelDBStore) Set(key string, v any) error {
 }
 
 func (l *LevelDBStore) Delete(key string) error {
-	err := l.db.Delete([]byte(key), &opt.WriteOptions{
-		Sync: true,
-	})
+	err := l.db.Delete([]byte(key), nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete the key: %w", err)
 	}
