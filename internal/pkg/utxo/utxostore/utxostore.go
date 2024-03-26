@@ -55,18 +55,7 @@ func (u *Store) SetBlockHeight(_ context.Context, blockHeight int64) error {
 
 	blockHeightKey := newBlockheightKey()
 
-	var currentBlockHeight int64
-
-	_, err := u.s.Get(blockHeightKey.String(), &currentBlockHeight)
-	if err != nil {
-		return fmt.Errorf("failed to get current block height: %w", err)
-	}
-
-	if blockHeight <= currentBlockHeight {
-		return ErrIsPreviousBlockHeight
-	}
-
-	err = u.s.Set(blockHeightKey.String(), blockHeight)
+	err := u.s.Set(blockHeightKey.String(), blockHeight)
 	if err != nil {
 		return fmt.Errorf("failed to store new block height: %w", err)
 	}
@@ -132,6 +121,18 @@ func (u *Store) GetOutputsByTxID(
 	return outputs, nil
 }
 
+func (u *Store) SpendOutputFromRetrievedOutputs(
+	_ context.Context,
+	txID string,
+	outputs []*TransactionOutput,
+	idx int,
+) (*TransactionOutput, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	return u.spendOutput(txID, idx, outputs)
+}
+
 func (u *Store) SpendOutput(
 	_ context.Context,
 	txID string,
@@ -151,6 +152,16 @@ func (u *Store) SpendOutput(
 	if !found {
 		return nil, ErrNotFound
 	}
+
+	return u.spendOutput(txID, idx, outputs)
+}
+
+func (u *Store) spendOutput(
+	txID string,
+	idx int,
+	outputs []*TransactionOutput,
+) (*TransactionOutput, error) {
+	var txOutputsKey = newTransactionIDKey(txID, true)
 
 	if idx < 0 || idx >= len(outputs) {
 		return nil, ErrNotFound
@@ -218,19 +229,9 @@ func (u *Store) addTxOutputs(txID string, outputs []*TransactionOutput) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
-	var i interface{}
-
 	txOutputsKey := newTransactionIDKey(txID, true)
 
-	found, err := u.s.Get(txOutputsKey.String(), &i)
-	if err != nil {
-		return fmt.Errorf("failed to cre current tx id outputs: %w", err)
-	}
-	if found {
-		return nil
-	}
-
-	err = u.s.Set(txOutputsKey.String(), outputs)
+	err := u.s.Set(txOutputsKey.String(), outputs)
 	if err != nil {
 		return fmt.Errorf("failed to store tx outputs: %w", err)
 	}

@@ -187,7 +187,9 @@ func NewUTXORedis(i *do.Injector) (*redis.Client, error) {
 	}
 
 	client := redis.NewClient(&redis.Options{
-		Addr: cfg.UTXO.Storage.Redis.Host,
+		Addr:     cfg.UTXO.Storage.Redis.Host,
+		Username: cfg.UTXO.Storage.Redis.Username,
+		Password: cfg.UTXO.Storage.Redis.Password,
 	})
 
 	return client, nil

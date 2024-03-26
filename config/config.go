@@ -45,7 +45,9 @@ type Config struct {
 				Path string `yaml:"path"`
 			} `yaml:"leveldb"`
 			Redis struct {
-				Host string `yaml:"host"`
+				Host     string `yaml:"host"`
+				Username string `yaml:"username"`
+				Password string `yaml:"password"`
 			}
 		} `yaml:"storage"`
 	} `yaml:"utxo"`

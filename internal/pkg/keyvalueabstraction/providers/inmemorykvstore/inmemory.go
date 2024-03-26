@@ -186,7 +186,7 @@ func (i *Store) Get(key string, v any) (found bool, err error) {
 }
 
 // ListKeys implements keyvaluestore.Store.
-func (i *Store) ListKeys(si func(key string, getValue func(v interface{}) error) (stop bool, err error)) error {
+func (i *Store) ListKeys(match string, si func(key string, getValue func(v interface{}) error) (stop bool, err error)) error {
 	if si == nil {
 		return nil
 	}

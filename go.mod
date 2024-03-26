@@ -5,12 +5,12 @@ go 1.22.0
 require (
 	dario.cat/mergo v1.0.0
 	github.com/IBM/sarama v1.43.0
-	github.com/cskr/pubsub v1.0.2
 	github.com/go-ozzo/ozzo-validation v3.6.0+incompatible
 	github.com/go-redis/redismock/v9 v9.2.0
 	github.com/iancoleman/strcase v0.3.0
 	github.com/knadh/koanf v1.5.0
 	github.com/philippgille/gokv/encoding v0.7.0
+	github.com/puzpuzpuz/xsync v1.5.2
 	github.com/redis/go-redis/v9 v9.5.1
 	github.com/stretchr/testify v1.8.4
 	github.com/syndtr/goleveldb v1.0.0
@@ -22,13 +22,13 @@ require (
 require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/puzpuzpuz/xsync v1.5.2 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
@@ -38,7 +38,6 @@ require (
 
 require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/avito-tech/go-transaction-manager v1.5.0
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect

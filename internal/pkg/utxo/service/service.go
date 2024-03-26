@@ -90,6 +90,22 @@ func (u *Service[T]) GetUTXOByAddress(ctx context.Context, address string) ([]bo
 
 func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) error {
 	return u.txManager.Do(func(ctx context.Context, ldbTx txmanager.Transaction[T]) error {
+		currentHeight, err := u.s.GetBlockHeight(ctx)
+		if err != nil {
+			return err
+		}
+
+		if currentHeight > block.GetHeight() {
+			return ErrBlockAlreadyStored
+		}
+
+		// First, we need to complete all "GET" commands before we can start "SET" commands
+		// in the transaction
+		spendingOutputs, err := u.getSpeningOutputs(ctx, block)
+		if err != nil {
+			return err
+		}
+
 		storeWithTx, err := u.ldbUTXOStore.WithTx(ldbTx)
 		if err != nil {
 			return err
@@ -97,6 +113,7 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 
 		utxoStoreWithTx := u.s.WithStorer(storeWithTx)
 
+		// Updating block height
 		if err := utxoStoreWithTx.SetBlockHeight(ctx, block.GetHeight()); err != nil {
 			if errors.Is(err, utxostore.ErrIsPreviousBlockHeight) {
 				return ErrBlockAlreadyStored
@@ -116,7 +133,7 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 				return fmt.Errorf("failed to store utxo: %w", err)
 			}
 
-			err = u.spendOutputs(ctx, utxoStoreWithTx, tx)
+			err = u.spendOutputs(ctx, spendingOutputs, utxoStoreWithTx, tx)
 			if err != nil {
 				return fmt.Errorf("failed to spend outputs: %w", err)
 			}
@@ -126,18 +143,49 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 	})
 }
 
+func (s *Service[T]) getSpeningOutputs(
+	ctx context.Context,
+	tx *blockchain.Block,
+) (map[string][]*utxostore.TransactionOutput, error) {
+	outputs := map[string][]*utxostore.TransactionOutput{}
+
+	for _, tx := range tx.GetTransactions() {
+		for _, input := range tx.GetInputs() {
+			if input.SpendingOutput != nil {
+				txID := input.SpendingOutput.GetTxID()
+
+				if _, ok := outputs[txID]; ok {
+					continue
+				}
+
+				spendingOutputs, err := s.s.GetOutputsByTxID(ctx, txID)
+				if err != nil {
+					return nil, fmt.Errorf("get tx outputs error: %w", err)
+				}
+
+				outputs[txID] = spendingOutputs
+			}
+		}
+	}
+
+	return outputs, nil
+}
+
 func (s *Service[T]) spendOutputs(
 	ctx context.Context,
+	availableTxOutputs map[string][]*utxostore.TransactionOutput,
 	utxoStore *utxostore.Store,
 	tx *blockchain.Transaction,
 ) error {
 	for _, input := range tx.GetInputs() {
 		if input.SpendingOutput != nil {
-			spentOutput, err := utxoStore.SpendOutput(ctx, input.SpendingOutput.TxID, input.SpendingOutput.VOut)
+
+			spendingOutputs := availableTxOutputs[input.SpendingOutput.TxID]
+
+			_, err := utxoStore.SpendOutputFromRetrievedOutputs(ctx, input.SpendingOutput.GetTxID(), spendingOutputs, input.SpendingOutput.VOut)
 			if err != nil {
-				return fmt.Errorf("failed to spend utxo: %w", err)
+				return fmt.Errorf("spend utxo error: %w", err)
 			}
-			_ = spentOutput
 		}
 	}
 

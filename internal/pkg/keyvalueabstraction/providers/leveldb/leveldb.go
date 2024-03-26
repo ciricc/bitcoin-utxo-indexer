@@ -91,7 +91,7 @@ func (l *LevelDBStore) WithTx(tx txmanager.Transaction[*leveldb.Transaction]) (k
 	}, nil
 }
 
-func (l *LevelDBStore) ListKeys(si func(key string, getValue func(v interface{}) error) (ok bool, err error)) error {
+func (l *LevelDBStore) ListKeys(match string, si func(key string, getValue func(v interface{}) error) (ok bool, err error)) error {
 	iterator := l.db.NewIterator(nil, nil)
 	defer iterator.Release()
 

@@ -30,10 +30,10 @@ func newBlockheightKey() *storageKey {
 	}
 }
 
-func newAddressUTXOTxIDsKey(address string) *storageKey {
+func newAddressUTXOTxIDsKey(address string, txID string) *storageKey {
 	return &storageKey{
 		prefix: addressKeyType,
-		key:    fmt.Sprintf("%s:o", address),
+		key:    fmt.Sprintf("%s:o:%s", address, txID),
 	}
 }
 

@@ -56,9 +56,13 @@ func (r *RedisStore) Get(key string, v any) (found bool, err error) {
 }
 
 // ListKeys implements keyvaluestore.StoreWithTxManager.
-func (r *RedisStore) ListKeys(si func(key string, getValue func(v interface{}) error) (ok bool, err error)) error {
+func (r *RedisStore) ListKeys(match string, si func(key string, getValue func(v interface{}) error) (ok bool, err error)) error {
+	if match == "" {
+		match = "*"
+	}
+
 	ctx := context.Background()
-	iter := r.redis.Scan(ctx, 0, "*", 0).Iterator()
+	iter := r.redis.Scan(ctx, 0, match, 0).Iterator()
 
 	for iter.Next(ctx) {
 		key := iter.Val()
