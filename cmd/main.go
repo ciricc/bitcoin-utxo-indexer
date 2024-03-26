@@ -115,6 +115,7 @@ func main() {
 					}
 				}
 
+				logger.Info().Str("hash", block.GetHash().String()).Msg("got new block")
 				if err := scannerState.UpdateLastScannedBlockHash(ctx, block.Hash.String()); err != nil {
 					return fmt.Errorf("failed to update last scanner block hash: %w", err)
 				}

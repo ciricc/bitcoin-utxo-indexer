@@ -131,15 +131,20 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 				s.opts.logger.Info().
 					Str("hash", block.GetHash().String()).
 					Str("headerHash", header.GetHash().String()).
+					Str("nextHash", expectedNextHashToSend.String()).
 					Int64("size", block.GetSize()).
 					Msg("downloaded the block")
 
 				checkAndSendNextBlock := func() {
 					// Continuously check if the next block is in the buffer and send it if present.
 					for nextBlock, ok := orderingBlocks.Load(expectedNextHashToSend.String()); ok; nextBlock, ok = orderingBlocks.Load(expectedNextHashToSend.String()) {
+						s.opts.logger.Debug().
+							Str("hash", nextBlock.GetHash().String()).
+							Str("nextHash", expectedNextHashToSend.String()).
+							Msg("sending new block")
 						downloadedBlocks <- nextBlock
 						orderingBlocks.Delete(expectedNextHashToSend.String())
-						expectedNextHashToSend = nextBlock.GetHash()
+						expectedNextHashToSend = nextBlock.GetNextBlockHash()
 					}
 				}
 
