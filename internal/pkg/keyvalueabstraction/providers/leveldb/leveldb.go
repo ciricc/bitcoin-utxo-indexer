@@ -68,7 +68,7 @@ func (l *LevelDBStore) Set(key string, v any) error {
 	}
 
 	err = l.db.Put([]byte(key), value, &opt.WriteOptions{
-		Sync: true,
+		Sync: false,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to put the key: %w", err)
