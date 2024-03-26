@@ -45,7 +45,7 @@ func NewLevelDBStore(db LevelDB) (*LevelDBStore, error) {
 }
 
 func (l *LevelDBStore) Get(key string, v any) (found bool, err error) {
-	val, err := l.db.Get([]byte(key), &opt.ReadOptions{})
+	val, err := l.db.Get([]byte(key), nil)
 	if err != nil {
 		if errors.Is(err, leveldb.ErrNotFound) {
 			return false, nil
