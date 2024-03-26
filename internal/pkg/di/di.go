@@ -29,6 +29,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -97,7 +98,9 @@ func NewUTXOLevelDB(i *do.Injector) (*leveldb.DB, error) {
 		return nil, fmt.Errorf("failed to invoke configuration: %w", err)
 	}
 
-	db, err := leveldb.OpenFile(cfg.UTXO.Storage.LevelDB.Path, nil)
+	db, err := leveldb.OpenFile(cfg.UTXO.Storage.LevelDB.Path, &opt.Options{
+		WriteBuffer: 512 * opt.MiB,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to open leveldb file: %w", err)
 	}
