@@ -209,23 +209,25 @@ func NewScannerStateWithInMemoryStore(i *do.Injector) (*state.KeyValueScannerSta
 	return state, nil
 }
 
-func NewScannerStateWithLevelDB(i *do.Injector) (*state.KeyValueScannerState, error) {
-	kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*leveldb.Transaction]](i)
-	if err != nil {
-		return nil, fmt.Errorf("invoke key value store error: %w", err)
+func GetScannerStateConstructor[T any]() do.Provider[*state.KeyValueScannerState] {
+	return func(i *do.Injector) (*state.KeyValueScannerState, error) {
+		kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[T]](i)
+		if err != nil {
+			return nil, fmt.Errorf("invoke key value store error: %w", err)
+		}
+
+		cfg, err := do.Invoke[*config.Config](i)
+		if err != nil {
+			return nil, fmt.Errorf("invoke config error: %w", err)
+		}
+
+		state := state.NewStateWithKeyValueStore(
+			cfg.Scanner.State.StartFromBlockHash,
+			kvStore,
+		)
+
+		return state, nil
 	}
-
-	cfg, err := do.Invoke[*config.Config](i)
-	if err != nil {
-		return nil, fmt.Errorf("invoke config error: %w", err)
-	}
-
-	state := state.NewStateWithKeyValueStore(
-		cfg.Scanner.State.StartFromBlockHash,
-		kvStore,
-	)
-
-	return state, nil
 }
 
 func NewShutdowner(i *do.Injector) (*shutdown.Shutdowner, error) {
@@ -234,43 +236,45 @@ func NewShutdowner(i *do.Injector) (*shutdown.Shutdowner, error) {
 		return nil, fmt.Errorf("invoke kafka sync producer error: %w", err)
 	}
 
-	// redisClient, err := do.Invoke[*redis.Client](i)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("invoke redis client error: %w", err)
-	// }
+	redisClient, err := do.Invoke[*redis.Client](i)
+	if err != nil {
+		return nil, fmt.Errorf("invoke redis client error: %w", err)
+	}
 
 	// levelDB, err := do.Invoke[*leveldb.DB](i)
 	// if err != nil {
 	// 	return nil, fmt.Errorf("failed to invoke leveldb store: %w", err)
 	// }
 
-	inMemory, err := do.Invoke[*inmemorykvstore.Store](i)
-	if err != nil {
-		return nil, fmt.Errorf("invoke in-memory store error: %w", err)
-	}
+	// inMemory, err := do.Invoke[*inmemorykvstore.Store](i)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("invoke in-memory store error: %w", err)
+	// }
 
 	shutdowner := shutdown.NewShutdowner(
 		shutdown.NewShutdownFromCloseable(kafkaSyncProducer),
-		// shutdown.NewShutdownFromCloseable(redisClient),
+		shutdown.NewShutdownFromCloseable(redisClient),
 		// shutdown.NewShutdownFromCloseable(levelDB),
-		shutdown.NewShutdownFromCloseable(inMemory),
+		// shutdown.NewShutdownFromCloseable(inMemory),
 	)
 
 	return shutdowner, nil
 }
 
-func NewUTXOStoreWithInMemoryStore(i *do.Injector) (*utxostore.Store, error) {
-	kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*inmemorykvstore.Store]](i)
-	if err != nil {
-		return nil, fmt.Errorf("invoke redis store error: %w", err)
-	}
+func GetUTXOStoreConstructor[T any]() do.Provider[*utxostore.Store] {
+	return func(i *do.Injector) (*utxostore.Store, error) {
+		kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[T]](i)
+		if err != nil {
+			return nil, fmt.Errorf("invoke redis store error: %w", err)
+		}
 
-	store, err := utxostore.New(kvStore)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create UTXO store: %w", err)
-	}
+		store, err := utxostore.New(kvStore)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create UTXO store: %w", err)
+		}
 
-	return store, nil
+		return store, nil
+	}
 }
 
 func NewUTXOStoreWithLevelDB(i *do.Injector) (*utxostore.Store, error) {
@@ -287,37 +291,39 @@ func NewUTXOStoreWithLevelDB(i *do.Injector) (*utxostore.Store, error) {
 	return store, nil
 }
 
-func NewUTXOStoreService(i *do.Injector) (*utxoservice.Service[*inmemorykvstore.Store], error) {
-	utxoStore, err := do.Invoke[*utxostore.Store](i)
-	if err != nil {
-		return nil, fmt.Errorf("failed to invoke UTXO store: %w", err)
+func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T]] {
+	return func(i *do.Injector) (*utxoservice.Service[T], error) {
+		utxoStore, err := do.Invoke[*utxostore.Store](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke UTXO store: %w", err)
+		}
+
+		utxoKVStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[T]](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke UTXO KV store: %w", err)
+		}
+
+		logger, err := do.Invoke[*zerolog.Logger](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke logger: %w", err)
+		}
+
+		txManager, err := do.Invoke[*txmanager.TransactionManager[T]](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke tx manager: %w", err)
+		}
+
+		utxoStoreService := utxoservice.New(
+			utxoStore,
+			txManager,
+			utxoKVStore,
+			&utxoservice.ServiceOptions{
+				Logger: logger,
+			},
+		)
+
+		return utxoStoreService, nil
 	}
-
-	utxoKVStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*inmemorykvstore.Store]](i)
-	if err != nil {
-		return nil, fmt.Errorf("failed to invoke UTXO KV store: %w", err)
-	}
-
-	logger, err := do.Invoke[*zerolog.Logger](i)
-	if err != nil {
-		return nil, fmt.Errorf("failed to invoke logger: %w", err)
-	}
-
-	txManager, err := do.Invoke[*txmanager.TransactionManager[*inmemorykvstore.Store]](i)
-	if err != nil {
-		return nil, fmt.Errorf("failed to invoke tx manager: %w", err)
-	}
-
-	utxoStoreService := utxoservice.New(
-		utxoStore,
-		txManager,
-		utxoKVStore,
-		&utxoservice.ServiceOptions{
-			Logger: logger,
-		},
-	)
-
-	return utxoStoreService, nil
 }
 
 func NewLogger(i *do.Injector) (*zerolog.Logger, error) {
@@ -331,13 +337,15 @@ func NewLogger(i *do.Injector) (*zerolog.Logger, error) {
 	return &log, nil
 }
 
-func NewUTXOGRPCHandlers(i *do.Injector) (*grpchandlers.UTXOGrpcHandlers, error) {
-	service, err := do.Invoke[*utxoservice.Service[*inmemorykvstore.Store]](i)
-	if err != nil {
-		return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
-	}
+func GeUTXOGRPCHandlersConstructor[T any]() do.Provider[*grpchandlers.UTXOGrpcHandlers] {
+	return func(i *do.Injector) (*grpchandlers.UTXOGrpcHandlers, error) {
+		service, err := do.Invoke[*utxoservice.Service[T]](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
+		}
 
-	return grpchandlers.New(service), nil
+		return grpchandlers.New(service), nil
+	}
 }
 
 func NewGRPCServer(i *do.Injector) (*grpc.Server, error) {

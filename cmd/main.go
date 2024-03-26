@@ -11,9 +11,9 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/scanner"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/state"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/di"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/inmemorykvstore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
 	"google.golang.org/grpc"
@@ -27,7 +27,6 @@ func main() {
 	do.Provide(i, di.NewLogger)
 	do.Provide(i, di.NewShutdowner)
 
-	do.Provide(i, di.NewScannerStateWithInMemoryStore)
 	do.Provide(i, di.NewBitcoinBlocksIterator)
 	do.Provide(i, di.NewBlockchainScanner)
 
@@ -36,18 +35,21 @@ func main() {
 	// do.Provide(i, di.NewUTXOLevelDBStore)
 	// do.Provide(i, di.NewLevelDBTxManager)
 
-	do.Provide(i, di.NewInMemoryStore)
-	do.Provide(i, di.NewUTXOInMemoryStore)
-	do.Provide(i, di.NewInMemoryTxManager)
-	do.Provide(i, di.NewUTXOStoreWithInMemoryStore)
+	// do.Provide(i, di.NewInMemoryStore)
+	// do.Provide(i, di.NewUTXOInMemoryStore)
+	// do.Provide(i, di.NewInMemoryTxManager)
+	// do.Provide(i, di.NewUTXOStoreWithInMemoryStore)
 
-	// do.Provide(i, di.NewUTXORedisStore)
-	// do.Provide(i, di.NewUTXORedis)
-	// do.Provide(i, di.NewRedisTxManager)
+	do.Provide(i, di.GetUTXOStoreConstructor[*redis.Tx]())
+	do.Provide(i, di.NewUTXORedisStore)
+	do.Provide(i, di.NewUTXORedis)
+	do.Provide(i, di.NewRedisTxManager)
 
-	do.Provide(i, di.NewUTXOStoreService)
 	do.Provide(i, di.NewGRPCServer)
-	do.Provide(i, di.NewUTXOGRPCHandlers)
+
+	do.Provide(i, di.GetUTXOServiceConstructor[*redis.Tx]())
+	do.Provide(i, di.GeUTXOGRPCHandlersConstructor[*redis.Tx]())
+	do.Provide(i, di.GetScannerStateConstructor[*redis.Tx]())
 
 	logger, err := do.Invoke[*zerolog.Logger](i)
 	if err != nil {
@@ -67,7 +69,7 @@ func main() {
 		logger.Fatal().Err(err).Msg("failed to create scanner")
 	}
 
-	utxStoreService, err := do.Invoke[*utxoservice.Service[*inmemorykvstore.Store]](i)
+	utxStoreService, err := do.Invoke[*utxoservice.Service[*redis.Tx]](i)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to create utxo store service")
 	}
