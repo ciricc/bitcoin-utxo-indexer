@@ -111,6 +111,8 @@ func main() {
 
 				if err := utxStoreService.AddFromBlock(ctx, block); err != nil {
 					if !errors.Is(err, utxoservice.ErrBlockAlreadyStored) {
+						logger.Err(err).Str("hash", block.GetHash().String()).Msg("failed to store UTXO from block")
+
 						return fmt.Errorf("failed to store UTXO from block: %w", err)
 					}
 				}

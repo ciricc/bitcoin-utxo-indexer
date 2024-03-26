@@ -95,7 +95,7 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 			return err
 		}
 
-		if currentHeight > block.GetHeight() {
+		if currentHeight >= block.GetHeight() && currentHeight != 0 {
 			return ErrBlockAlreadyStored
 		}
 
@@ -124,10 +124,11 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 
 		for _, tx := range block.GetTransactions() {
 
+			convertedOutputs := getTransactionsOutputsForStore(tx)
 			err = utxoStoreWithTx.AddTransactionOutputs(
 				ctx,
 				tx.GetID(),
-				getTransactionsOutputsForStore(tx),
+				convertedOutputs,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to store utxo: %w", err)
@@ -150,9 +151,15 @@ func (s *Service[T]) getSpeningOutputs(
 	outputs := map[string][]*utxostore.TransactionOutput{}
 
 	for _, tx := range tx.GetTransactions() {
+		outputs[tx.GetID()] = getTransactionsOutputsForStore(tx)
+
 		for _, input := range tx.GetInputs() {
 			if input.SpendingOutput != nil {
 				txID := input.SpendingOutput.GetTxID()
+
+				if _, ok := outputs[txID]; ok {
+					continue
+				}
 
 				if _, ok := outputs[txID]; ok {
 					continue
