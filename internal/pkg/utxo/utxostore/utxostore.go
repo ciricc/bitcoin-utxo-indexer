@@ -3,14 +3,12 @@ package utxostore
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 )
 
 type Store struct {
-	s  keyvaluestore.Store
-	mu *sync.RWMutex
+	s keyvaluestore.Store
 
 	addressUTXOIds *addressUTXOIdx
 }
@@ -18,7 +16,6 @@ type Store struct {
 func New(storer keyvaluestore.Store) (*Store, error) {
 	store := &Store{
 		s:              storer,
-		mu:             &sync.RWMutex{},
 		addressUTXOIds: newAddressUTXOIndex(storer),
 	}
 
@@ -27,16 +24,12 @@ func New(storer keyvaluestore.Store) (*Store, error) {
 
 func (u *Store) WithStorer(storer keyvaluestore.Store) *Store {
 	return &Store{
-		mu:             u.mu,
 		s:              storer,
 		addressUTXOIds: newAddressUTXOIndex(storer),
 	}
 }
 
 func (u *Store) GetBlockHeight(_ context.Context) (int64, error) {
-	u.mu.RLock()
-	defer u.mu.RUnlock()
-
 	blockHeightKey := newBlockheightKey()
 
 	var currentBlockHeight int64
@@ -50,9 +43,6 @@ func (u *Store) GetBlockHeight(_ context.Context) (int64, error) {
 }
 
 func (u *Store) SetBlockHeight(_ context.Context, blockHeight int64) error {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-
 	blockHeightKey := newBlockheightKey()
 
 	err := u.s.Set(blockHeightKey.String(), blockHeight)
@@ -64,9 +54,6 @@ func (u *Store) SetBlockHeight(_ context.Context, blockHeight int64) error {
 }
 
 func (u *Store) GetUnspentOutputsByAddress(_ context.Context, address string) ([]*TransactionOutput, error) {
-	u.mu.RLock()
-	defer u.mu.RUnlock()
-
 	txIDsWithOutputs, err := u.addressUTXOIds.getAddressUTXOTransactionIds(address)
 	if err != nil {
 		return nil, err
@@ -104,9 +91,6 @@ func (u *Store) GetOutputsByTxID(
 	_ context.Context,
 	txID string,
 ) ([]*TransactionOutput, error) {
-	u.mu.RLock()
-	defer u.mu.RUnlock()
-
 	var outputs []*TransactionOutput
 
 	ok, err := u.s.Get(newTransactionIDKey(txID, true).String(), &outputs)
@@ -127,8 +111,6 @@ func (u *Store) SpendOutputFromRetrievedOutputs(
 	outputs []*TransactionOutput,
 	idx int,
 ) (*TransactionOutput, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
 
 	return u.spendOutput(txID, idx, outputs)
 }
@@ -138,9 +120,6 @@ func (u *Store) SpendOutput(
 	txID string,
 	idx int,
 ) (*TransactionOutput, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-
 	var outputs []*TransactionOutput
 	var txOutputsKey = newTransactionIDKey(txID, true)
 
@@ -226,9 +205,6 @@ func (u *Store) AddTransactionOutputs(
 }
 
 func (u *Store) addTxOutputs(txID string, outputs []*TransactionOutput) error {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-
 	txOutputsKey := newTransactionIDKey(txID, true)
 
 	err := u.s.Set(txOutputsKey.String(), outputs)
