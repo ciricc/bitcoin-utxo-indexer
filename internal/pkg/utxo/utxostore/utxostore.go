@@ -54,6 +54,14 @@ func (u *Store) SetBlockHeight(_ context.Context, blockHeight int64) error {
 	return nil
 }
 
+func (u *Store) RemoveAddressTxIDs(_ context.Context, address string, txIDs []string) error {
+	if err := u.addressUTXOIds.deleteAdressUTXOTransactionIds(address, txIDs); err != nil {
+		return fmt.Errorf("delete address UTXO tx ids error: %w", err)
+	}
+
+	return nil
+}
+
 func (u *Store) GetUnspentOutputsByAddress(_ context.Context, address string) ([]*TransactionOutput, error) {
 	txIDsWithOutputs, err := u.addressUTXOIds.getAddressUTXOTransactionIds(address)
 	if err != nil {
@@ -111,26 +119,38 @@ func (u *Store) SpendOutputFromRetrievedOutputs(
 	txID string,
 	outputs []*TransactionOutput,
 	idx int,
-) (*TransactionOutput, error) {
+) ([]string, *TransactionOutput, error) {
 
 	return u.spendOutput(txID, idx, outputs)
+}
+
+func (u *Store) SpendAllOutputs(
+	_ context.Context,
+	txID string,
+) error {
+	var txOutputsKey = newTransactionIDKey(txID, true)
+	if err := u.s.Delete(txOutputsKey.String()); err != nil {
+		return fmt.Errorf("delete outputs error: %w", err)
+	}
+
+	return nil
 }
 
 func (u *Store) SpendOutput(
 	_ context.Context,
 	txID string,
 	idx int,
-) (*TransactionOutput, error) {
+) ([]string, *TransactionOutput, error) {
 	var outputs []*TransactionOutput
 	var txOutputsKey = newTransactionIDKey(txID, true)
 
 	found, err := u.s.Get(txOutputsKey.String(), &outputs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get transaction outputs: %w", err)
+		return nil, nil, fmt.Errorf("failed to get transaction outputs: %w", err)
 	}
 
 	if !found {
-		return nil, ErrNotFound
+		return nil, nil, ErrNotFound
 	}
 
 	return u.spendOutput(txID, idx, outputs)
@@ -140,22 +160,22 @@ func (u *Store) spendOutput(
 	txID string,
 	idx int,
 	outputs []*TransactionOutput,
-) (*TransactionOutput, error) {
+) ([]string, *TransactionOutput, error) {
 	var txOutputsKey = newTransactionIDKey(txID, true)
 
 	if idx < 0 || idx >= len(outputs) {
-		return nil, ErrNotFound
+		return nil, nil, ErrNotFound
 	}
 
 	if outputs[idx] == nil {
-		return nil, ErrAlreadySpent
+		return nil, nil, ErrAlreadySpent
 	}
 
 	var spentOutput = *outputs[idx]
 
 	outputs[idx] = nil
 
-	txOutputAddresses := map[string]struct{}{}
+	unspentTxOutputAddresses := map[string]struct{}{}
 
 	// We need this variable because the output may not have an address
 	// So, we can't just appolige on txOutputAddresses size > 0
@@ -163,38 +183,49 @@ func (u *Store) spendOutput(
 	for _, output := range outputs {
 		if output != nil {
 			allSpent = false
+			// unspent outputs
 			for _, address := range output.Addresses {
-				txOutputAddresses[address] = struct{}{}
+				unspentTxOutputAddresses[address] = struct{}{}
 			}
 		}
+	}
 
+	dereferencedAddressed := []string{}
+	for _, address := range spentOutput.Addresses {
+		if _, ok := unspentTxOutputAddresses[address]; !ok {
+			// force to delete tx id lin for this address
+			// because not referencing anymore
+			dereferencedAddressed = append(dereferencedAddressed, address)
+		}
 	}
 
 	// There is no left unpent outputs
 	if allSpent {
 		err := u.s.Delete(txOutputsKey.String())
 		if err != nil {
-			return nil, fmt.Errorf("failed to delete transaction id key: %w", err)
+			return nil, nil, fmt.Errorf("failed to delete transaction id key: %w", err)
 		}
 	} else {
 		err := u.s.Set(txOutputsKey.String(), outputs)
 		if err != nil {
-			return nil, fmt.Errorf("failed to set transaction id key: %w", err)
+			return nil, nil, fmt.Errorf("failed to set transaction id key: %w", err)
 		}
 	}
 
-	// Remove index on this tx id from the storage
-	// For each address no more exising
-	for _, address := range spentOutput.Addresses {
-		if _, ok := txOutputAddresses[address]; !ok {
-			// remove idx for this address on unspent outputs
-			if err := u.addressUTXOIds.deleteAdressUTXOTransactionIds(address); err != nil {
-				return nil, err
-			}
-		}
+	return dereferencedAddressed, &spentOutput, nil
+}
+
+func (u *Store) UpgradeTransactionOutputs(
+	ctx context.Context,
+	txID string,
+	newOutputs []*TransactionOutput,
+) error {
+	err := u.setNewTxOutputs(txID, newOutputs)
+	if err != nil {
+		return err
 	}
 
-	return &spentOutput, nil
+	return nil
 }
 
 func (u *Store) AddTransactionOutputs(
@@ -202,15 +233,9 @@ func (u *Store) AddTransactionOutputs(
 	txID string,
 	outputs []*TransactionOutput,
 ) error {
-	return u.addTxOutputs(txID, outputs)
-}
-
-func (u *Store) addTxOutputs(txID string, outputs []*TransactionOutput) error {
-	txOutputsKey := newTransactionIDKey(txID, true)
-
-	err := u.s.Set(txOutputsKey.String(), outputs)
+	err := u.setNewTxOutputs(txID, outputs)
 	if err != nil {
-		return fmt.Errorf("failed to store tx outputs: %w", err)
+		return err
 	}
 
 	err = u.createAddressUTXOTxIdIndex(txID, outputs)
@@ -221,13 +246,29 @@ func (u *Store) addTxOutputs(txID string, outputs []*TransactionOutput) error {
 	return nil
 }
 
+func (u *Store) setNewTxOutputs(txID string, outputs []*TransactionOutput) error {
+	txOutputsKey := newTransactionIDKey(txID, true)
+
+	err := u.s.Set(txOutputsKey.String(), outputs)
+	if err != nil {
+		return fmt.Errorf("failed to store tx outputs: %w", err)
+	}
+
+	return nil
+}
+
 func (u *Store) createAddressUTXOTxIdIndex(txID string, outputs []*TransactionOutput) error {
+	txIDsByAdddress := map[string][]string{}
 	for _, output := range outputs {
 		for _, address := range output.Addresses {
-			err := u.addressUTXOIds.addAddressUTXOTransactionIds(address, []string{txID})
-			if err != nil {
-				return err
-			}
+			txIDsByAdddress[address] = append(txIDsByAdddress[address], txID)
+		}
+	}
+
+	for address, txIDs := range txIDsByAdddress {
+		err := u.addressUTXOIds.addAddressUTXOTransactionIds(address, txIDs)
+		if err != nil {
+			return err
 		}
 	}
 

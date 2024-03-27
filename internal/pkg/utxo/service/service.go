@@ -11,12 +11,13 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/rs/zerolog"
+	"github.com/samber/lo"
 )
 
 type UTXOStore interface {
 	AddTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
 	GetOutputsByTxID(_ context.Context, txID string) ([]*utxostore.TransactionOutput, error)
-	SpendOutput(_ context.Context, txID string, idx int) (*utxostore.TransactionOutput, error)
+	SpendOutput(_ context.Context, txID string, idx int) ([]string, *utxostore.TransactionOutput, error)
 	WithStorer(storer keyvaluestore.Store, sets sets.Sets) *utxostore.Store
 	GetUnspentOutputsByAddress(_ context.Context, address string) ([]*utxostore.TransactionOutput, error)
 	GetBlockHeight(_ context.Context) (int64, error)
@@ -131,6 +132,8 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 			return err
 		}
 
+		dereferenceAddresseByTxIDs := map[string][]string{}
+
 		for _, tx := range block.GetTransactions() {
 
 			convertedOutputs := getTransactionsOutputsForStore(tx)
@@ -143,9 +146,47 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 				return fmt.Errorf("failed to store utxo: %w", err)
 			}
 
-			err = u.spendOutputs(ctx, spendingOutputs, utxoStoreWithTx, tx)
+			dereferencedAddresses, err := u.spendOutputs(ctx, spendingOutputs, tx)
 			if err != nil {
 				return fmt.Errorf("failed to spend outputs: %w", err)
+			}
+
+			for _, address := range dereferencedAddresses {
+				dereferenceAddresseByTxIDs[address] = append(dereferenceAddresseByTxIDs[address], tx.GetID())
+			}
+		}
+
+		// we need to store new transaction outputs and delete all tx ids if there is no
+		// any output
+		for txID, outputs := range spendingOutputs {
+			allSpent := true
+
+			for _, output := range outputs {
+				if output != nil {
+					allSpent = false
+					break
+				}
+			}
+
+			if allSpent {
+				err := utxoStoreWithTx.SpendAllOutputs(ctx, txID)
+				if err != nil {
+					return fmt.Errorf("spend all outputs error: %w", err)
+				}
+
+			} else {
+				err := utxoStoreWithTx.UpgradeTransactionOutputs(ctx, txID, outputs)
+				if err != nil {
+					return fmt.Errorf("upgrade tx outputs error: %w", err)
+				}
+			}
+		}
+
+		// after, we need to dereference all addresses not referencing anymore
+		for address, txIDs := range dereferenceAddresseByTxIDs {
+			err := utxoStoreWithTx.RemoveAddressTxIDs(ctx, address, txIDs)
+			if err != nil {
+				return fmt.Errorf("remove error: %w", err)
 			}
 		}
 
@@ -170,10 +211,6 @@ func (s *Service[T]) getSpeningOutputs(
 					continue
 				}
 
-				if _, ok := outputs[txID]; ok {
-					continue
-				}
-
 				spendingOutputs, err := s.s.GetOutputsByTxID(ctx, txID)
 				if err != nil {
 					return nil, fmt.Errorf("get tx outputs error: %w", err)
@@ -187,25 +224,55 @@ func (s *Service[T]) getSpeningOutputs(
 	return outputs, nil
 }
 
+// spendOutputs spend all in-memory outputs for the next to store
+// the transaction outputs
+// It returns the list of addresses which need to dereference form this transaction
+// after spending
 func (s *Service[T]) spendOutputs(
 	ctx context.Context,
-	availableTxOutputs map[string][]*utxostore.TransactionOutput,
-	utxoStore *utxostore.Store,
+	storedOutputs map[string][]*utxostore.TransactionOutput,
 	tx *blockchain.Transaction,
-) error {
+) ([]string, error) {
+	dereferencedAddresses := map[string]bool{}
+
 	for _, input := range tx.GetInputs() {
 		if input.SpendingOutput != nil {
 
-			spendingOutputs := availableTxOutputs[input.SpendingOutput.TxID]
+			spendingOutputs := storedOutputs[input.SpendingOutput.TxID]
+			vout := input.SpendingOutput.VOut
 
-			_, err := utxoStore.SpendOutputFromRetrievedOutputs(ctx, input.SpendingOutput.GetTxID(), spendingOutputs, input.SpendingOutput.VOut)
-			if err != nil {
-				return fmt.Errorf("spend utxo error: %w", err)
+			if len(spendingOutputs) <= vout {
+				return nil, utxostore.ErrNotFound
+			}
+
+			if spendingOutputs[vout] == nil {
+				return nil, utxostore.ErrAlreadySpent
+			}
+
+			spendingOutputAddresses := spendingOutputs[vout].Addresses
+			unspentAddresses := map[string]bool{}
+
+			spendingOutputs[vout] = nil
+
+			for _, output := range spendingOutputs {
+				if output == nil {
+					continue
+				}
+
+				for _, address := range output.Addresses {
+					unspentAddresses[address] = true
+				}
+			}
+
+			for _, address := range spendingOutputAddresses {
+				if _, ok := unspentAddresses[address]; !ok {
+					dereferencedAddresses[address] = true
+				}
 			}
 		}
 	}
 
-	return nil
+	return lo.Keys(dereferencedAddresses), nil
 }
 
 func getTransactionsOutputsForStore(tx *blockchain.Transaction) []*utxostore.TransactionOutput {

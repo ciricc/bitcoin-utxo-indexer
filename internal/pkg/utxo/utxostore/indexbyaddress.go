@@ -17,9 +17,10 @@ func newAddressUTXOIndex(sets sets.Sets) *redisAddressUTXOIdx {
 	}
 }
 
-func (u *redisAddressUTXOIdx) deleteAdressUTXOTransactionIds(address string) error {
+func (u *redisAddressUTXOIdx) deleteAdressUTXOTransactionIds(address string, txIDs []string) error {
 	addressUTXOTxIDsKey := newAddressUTXOTxIDsSetKey(address)
-	err := u.s.DeleteSet(context.Background(), addressUTXOTxIDsKey.String())
+
+	err := u.s.RemoveFromSet(context.Background(), addressUTXOTxIDsKey.String(), txIDs...)
 	if err != nil {
 		return fmt.Errorf("failed to delete address UTXO tx ids: %w", err)
 	}
