@@ -1,65 +1,49 @@
 package utxostore
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
 )
 
-type addressUTXOIdx struct {
-	s keyvaluestore.Store
+type redisAddressUTXOIdx struct {
+	s sets.Sets
 }
 
-func newAddressUTXOIndex(storer keyvaluestore.Store) *addressUTXOIdx {
-	return &addressUTXOIdx{
-		s: storer,
+func newAddressUTXOIndex(sets sets.Sets) *redisAddressUTXOIdx {
+	return &redisAddressUTXOIdx{
+		s: sets,
 	}
 }
 
-func (u *addressUTXOIdx) deleteAdressUTXOTransactionIds(address string) error {
-	txIds, err := u.getAddressUTXOTransactionIds(address)
+func (u *redisAddressUTXOIdx) deleteAdressUTXOTransactionIds(address string) error {
+	addressUTXOTxIDsKey := newAddressUTXOTxIDsSetKey(address)
+	err := u.s.DeleteSet(context.Background(), addressUTXOTxIDsKey.String())
 	if err != nil {
-		return fmt.Errorf("failed to get address UTXO tx ids: %w", err)
-	}
-
-	for _, txID := range txIds {
-		addressUTXOTxIDsKey := newAddressUTXOTxIDsKey(address, txID)
-		if err := u.s.Delete(addressUTXOTxIDsKey.String()); err != nil {
-			return fmt.Errorf("failed to remove idx: %w", err)
-		}
+		return fmt.Errorf("failed to delete address UTXO tx ids: %w", err)
 	}
 
 	return nil
 }
 
-func (i *addressUTXOIdx) getAddressUTXOTransactionIds(address string) ([]string, error) {
-
-	txIds := []string{}
-	addressUTXOTxIDsKey := newAddressUTXOTxIDsKey(address, "*")
-
-	err := i.s.ListKeys(addressUTXOTxIDsKey.String(), func(key string, getValue func(v interface{}) error) (ok bool, err error) {
-		txIds = append(txIds, key)
-
-		return false, nil
-	})
+func (i *redisAddressUTXOIdx) getAddressUTXOTransactionIds(address string) ([]string, error) {
+	addressUTXOTxIDsKey := newAddressUTXOTxIDsSetKey(address)
+	txIds, err := i.s.GetSet(context.Background(), addressUTXOTxIDsKey.String())
 	if err != nil {
-		return nil, fmt.Errorf("failed to list keys: %w", err)
+		return nil, fmt.Errorf("get address UTXO tx ids set error: %w", err)
 	}
 
 	return txIds, nil
 }
 
-func (i *addressUTXOIdx) addAddressUTXOTransactionIds(
+func (i *redisAddressUTXOIdx) addAddressUTXOTransactionIds(
 	address string,
 	txIDs []string,
 ) error {
-	for _, txID := range txIDs {
-		addressUTXOTxIDsKey := newAddressUTXOTxIDsKey(address, txID)
-
-		err := i.s.Set(addressUTXOTxIDsKey.String(), 0)
-		if err != nil {
-			return fmt.Errorf("failed to store address UTXO tx ids index: %w", err)
-		}
+	err := i.s.AddToSet(context.Background(), newAddressUTXOTxIDsSetKey(address).String(), txIDs...)
+	if err != nil {
+		return fmt.Errorf("failed to add address UTXO tx ids: %w", err)
 	}
 
 	return nil

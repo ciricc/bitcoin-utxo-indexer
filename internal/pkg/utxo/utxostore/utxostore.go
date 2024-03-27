@@ -5,27 +5,28 @@ import (
 	"fmt"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
 )
 
 type Store struct {
 	s keyvaluestore.Store
 
-	addressUTXOIds *addressUTXOIdx
+	addressUTXOIds *redisAddressUTXOIdx
 }
 
-func New(storer keyvaluestore.Store) (*Store, error) {
+func New(storer keyvaluestore.Store, setsStore sets.Sets) (*Store, error) {
 	store := &Store{
 		s:              storer,
-		addressUTXOIds: newAddressUTXOIndex(storer),
+		addressUTXOIds: newAddressUTXOIndex(setsStore),
 	}
 
 	return store, nil
 }
 
-func (u *Store) WithStorer(storer keyvaluestore.Store) *Store {
+func (u *Store) WithStorer(storer keyvaluestore.Store, sets sets.Sets) *Store {
 	return &Store{
 		s:              storer,
-		addressUTXOIds: newAddressUTXOIndex(storer),
+		addressUTXOIds: newAddressUTXOIndex(sets),
 	}
 }
 

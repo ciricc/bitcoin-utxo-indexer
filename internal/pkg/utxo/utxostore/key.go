@@ -30,6 +30,13 @@ func newBlockheightKey() *storageKey {
 	}
 }
 
+func newAddressUTXOTxIDsSetKey(address string) *storageKey {
+	return &storageKey{
+		prefix: addressKeyType,
+		key:    fmt.Sprintf("%s:set", address),
+	}
+}
+
 func newAddressUTXOTxIDsKey(address string, txID string) *storageKey {
 	return &storageKey{
 		prefix: addressKeyType,

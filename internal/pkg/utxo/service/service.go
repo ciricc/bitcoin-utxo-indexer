@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
@@ -16,7 +17,7 @@ type UTXOStore interface {
 	AddTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
 	GetOutputsByTxID(_ context.Context, txID string) ([]*utxostore.TransactionOutput, error)
 	SpendOutput(_ context.Context, txID string, idx int) (*utxostore.TransactionOutput, error)
-	WithStorer(storer keyvaluestore.Store) *utxostore.Store
+	WithStorer(storer keyvaluestore.Store, sets sets.Sets) *utxostore.Store
 	GetUnspentOutputsByAddress(_ context.Context, address string) ([]*utxostore.TransactionOutput, error)
 	GetBlockHeight(_ context.Context) (int64, error)
 }
@@ -28,8 +29,9 @@ type ServiceOptions struct {
 type Service[T any] struct {
 	s UTXOStore
 
-	txManager    *txmanager.TransactionManager[T]
-	ldbUTXOStore keyvaluestore.StoreWithTxManager[T]
+	txManager *txmanager.TransactionManager[T]
+	txStore   keyvaluestore.StoreWithTxManager[T]
+	txSets    sets.SetsWithTxManager[T]
 
 	// logger is the logger used by the service.
 	logger *zerolog.Logger
@@ -40,6 +42,7 @@ func New[T any](
 
 	txManager *txmanager.TransactionManager[T],
 	utxoKVStore keyvaluestore.StoreWithTxManager[T],
+	sets sets.SetsWithTxManager[T],
 
 	options *ServiceOptions,
 ) *Service[T] {
@@ -54,10 +57,11 @@ func New[T any](
 	}
 
 	return &Service[T]{
-		s:            s,
-		ldbUTXOStore: utxoKVStore,
-		logger:       defaultOptions.Logger,
-		txManager:    txManager,
+		s:         s,
+		txStore:   utxoKVStore,
+		txSets:    sets,
+		logger:    defaultOptions.Logger,
+		txManager: txManager,
 	}
 }
 
@@ -89,7 +93,7 @@ func (u *Service[T]) GetUTXOByAddress(ctx context.Context, address string) ([]bo
 }
 
 func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) error {
-	return u.txManager.Do(func(ctx context.Context, ldbTx txmanager.Transaction[T]) error {
+	return u.txManager.Do(func(ctx context.Context, tx txmanager.Transaction[T]) error {
 		currentHeight, err := u.s.GetBlockHeight(ctx)
 		if err != nil {
 			return err
@@ -106,12 +110,17 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 			return err
 		}
 
-		storeWithTx, err := u.ldbUTXOStore.WithTx(ldbTx)
+		storeWithTx, err := u.txStore.WithTx(tx)
 		if err != nil {
 			return err
 		}
 
-		utxoStoreWithTx := u.s.WithStorer(storeWithTx)
+		setsWithTx, err := u.txSets.WithTx(tx)
+		if err != nil {
+			return err
+		}
+
+		utxoStoreWithTx := u.s.WithStorer(storeWithTx, setsWithTx)
 
 		// Updating block height
 		if err := utxoStoreWithTx.SetBlockHeight(ctx, block.GetHeight()); err != nil {

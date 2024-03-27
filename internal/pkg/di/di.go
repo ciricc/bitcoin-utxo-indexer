@@ -15,6 +15,8 @@ import (
 	leveldbkvstore "github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/leveldb"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/rediskvstore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/logger"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/providers/redissets"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/shutdown"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/drivers/inmemorytx"
 	leveldbtx "github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/drivers/leveldb"
@@ -273,7 +275,12 @@ func GetUTXOStoreConstructor[T any]() do.Provider[*utxostore.Store] {
 			return nil, fmt.Errorf("invoke redis store error: %w", err)
 		}
 
-		store, err := utxostore.New(kvStore)
+		sets, err := do.Invoke[sets.SetsWithTxManager[T]](i)
+		if err != nil {
+			return nil, fmt.Errorf("invoke sets error: %w", err)
+		}
+
+		store, err := utxostore.New(kvStore, sets)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create UTXO store: %w", err)
 		}
@@ -282,18 +289,13 @@ func GetUTXOStoreConstructor[T any]() do.Provider[*utxostore.Store] {
 	}
 }
 
-func NewUTXOStoreWithLevelDB(i *do.Injector) (*utxostore.Store, error) {
-	kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*leveldb.Transaction]](i)
+func NewRedisSets(i *do.Injector) (sets.SetsWithTxManager[redis.Pipeliner], error) {
+	redis, err := do.Invoke[*redis.Client](i)
 	if err != nil {
-		return nil, fmt.Errorf("invoke redis store error: %w", err)
+		return nil, fmt.Errorf("invoke redis error: %w", err)
 	}
 
-	store, err := utxostore.New(kvStore)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create UTXO store: %w", err)
-	}
-
-	return store, nil
+	return redissets.New(redis), nil
 }
 
 func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T]] {
@@ -306,6 +308,11 @@ func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T]] {
 		utxoKVStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[T]](i)
 		if err != nil {
 			return nil, fmt.Errorf("failed to invoke UTXO KV store: %w", err)
+		}
+
+		sets, err := do.Invoke[sets.SetsWithTxManager[T]](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke sets: %w", err)
 		}
 
 		logger, err := do.Invoke[*zerolog.Logger](i)
@@ -322,6 +329,7 @@ func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T]] {
 			utxoStore,
 			txManager,
 			utxoKVStore,
+			sets,
 			&utxoservice.ServiceOptions{
 				Logger: logger,
 			},

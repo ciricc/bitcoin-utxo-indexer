@@ -37,6 +37,6 @@ utxo:
 
     # Redis storage configration for the scanner state
     redis:
-      host: 195.2.78.229:6379
-      username: utxo
-      password: fEcONJORtFAr
+      host: localhost:6379
+      # username: utxo
+      # password: fEcONJORtFAr

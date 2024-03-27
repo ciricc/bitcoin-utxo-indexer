@@ -29,6 +29,7 @@ func main() {
 
 	do.Provide(i, di.NewBitcoinBlocksIterator)
 	do.Provide(i, di.NewBlockchainScanner)
+	do.Provide(i, di.NewRedisSets)
 
 	// do.Provide(i, di.NewUTXOLevelDB)
 	// do.Provide(i, di.NewUTXOLevelDBStore)
