@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/semaphore"
@@ -72,6 +73,8 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 		Msg("begin downloading blocks")
 
 	downloadedBlocks := make(chan *blockchain.Block, s.opts.concurrentBlocksDownloadLimit)
+	downloadBlocksMx := sync.Mutex{}
+
 	orderingBlocks := xsync.NewMapOf[*blockchain.Block]()
 
 	expectedNextHashToSend := startedFrom
@@ -88,7 +91,6 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 
 		// Limiting the number of concurrent goroutines to download the blocks
 		downloadBlocksSemaphore := semaphore.New(s.opts.concurrentBlocksDownloadLimit)
-		limitWaitingBlocksSemaphore := semaphore.New(s.opts.concurrentBlocksDownloadLimit)
 
 		for header := range headersCh {
 			// Requesting a place fo the goroutine
@@ -136,29 +138,23 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 					Int64("size", block.GetSize()).
 					Msg("downloaded the block")
 
-				checkAndSendNextBlock := func() {
-					// Continuously check if the next block is in the buffer and send it if present.
-					for nextBlock, ok := orderingBlocks.Load(expectedNextHashToSend.String()); ok; nextBlock, ok = orderingBlocks.Load(expectedNextHashToSend.String()) {
-						s.opts.logger.Debug().
-							Str("hash", nextBlock.GetHash().String()).
-							Str("nextHash", nextBlock.GetNextBlockHash().String()).
-							Msg("sending new block")
-						downloadedBlocks <- nextBlock
+				downloadBlocksMx.Lock()
+				defer downloadBlocksMx.Unlock()
 
-						orderingBlocks.Delete(expectedNextHashToSend.String())
-						limitWaitingBlocksSemaphore.Release()
+				orderingBlocks.Store(block.GetHash().String(), block)
 
-						expectedNextHashToSend = nextBlock.GetNextBlockHash()
-					}
+				for nextBlock, ok := orderingBlocks.Load(expectedNextHashToSend.String()); ok; nextBlock, ok = orderingBlocks.Load(expectedNextHashToSend.String()) {
+					s.opts.logger.Debug().
+						Str("hash", nextBlock.GetHash().String()).
+						Str("nextHash", nextBlock.GetNextBlockHash().String()).
+						Msg("sending new block")
+					downloadedBlocks <- nextBlock
+
+					orderingBlocks.Delete(expectedNextHashToSend.String())
+
+					expectedNextHashToSend = nextBlock.GetNextBlockHash()
 				}
 
-				select {
-				case <-ctx.Done():
-				default:
-					limitWaitingBlocksSemaphore.Acquire()
-					orderingBlocks.Store(block.GetHash().String(), block)
-					checkAndSendNextBlock()
-				}
 			}()
 		}
 	}()

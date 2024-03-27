@@ -249,7 +249,9 @@ func (s *Service[T]) spendOutputs(
 				return nil, utxostore.ErrAlreadySpent
 			}
 
-			spendingOutputAddresses := spendingOutputs[vout].Addresses
+			spendingOutputAddresses := make([]string, len(spendingOutputs[vout].Addresses))
+			copy(spendingOutputAddresses, spendingOutputs[vout].Addresses)
+
 			unspentAddresses := map[string]bool{}
 
 			spendingOutputs[vout] = nil

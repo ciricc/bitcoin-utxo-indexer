@@ -10,12 +10,12 @@ blockchainBlocksIterator:
   # How much headers we can store in memory
   # The more we store, the faster we can iterate over the blockchain
   # by downloading blocks in parallel
-  blockHeadersBufferSize: 1 
+  blockHeadersBufferSize: 64 
 
   # How much blocks we can request from the Bitcoin Core node at once
   # The more we request, the faster we can iterate over the blockchain
   # But it also increases thej memory usage on the bitcoin node side and the network traffic usage
-  concurrentBlocksDownloadLimit: 1 
+  concurrentBlocksDownloadLimit: 32 
 
 scanner:
   enabled: true 
