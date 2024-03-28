@@ -11,7 +11,6 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/rs/zerolog"
-	"github.com/samber/lo"
 )
 
 type UTXOStore interface {
@@ -151,8 +150,8 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 				return fmt.Errorf("failed to spend outputs: %w", err)
 			}
 
-			for _, address := range dereferencedAddresses {
-				dereferenceAddresseByTxIDs[address] = append(dereferenceAddresseByTxIDs[address], tx.GetID())
+			for address, txID := range dereferencedAddresses {
+				dereferenceAddresseByTxIDs[address] = append(dereferenceAddresseByTxIDs[address], txID)
 			}
 		}
 
@@ -232,8 +231,10 @@ func (s *Service[T]) spendOutputs(
 	ctx context.Context,
 	storedOutputs map[string][]*utxostore.TransactionOutput,
 	tx *blockchain.Transaction,
-) ([]string, error) {
-	dereferencedAddresses := map[string]bool{}
+) (map[string]string, error) {
+
+	// address => dereferenced tx id
+	dereferencedAddresses := map[string]string{}
 
 	for _, input := range tx.GetInputs() {
 		if input.SpendingOutput != nil {
@@ -268,13 +269,13 @@ func (s *Service[T]) spendOutputs(
 
 			for _, address := range spendingOutputAddresses {
 				if _, ok := unspentAddresses[address]; !ok {
-					dereferencedAddresses[address] = true
+					dereferencedAddresses[address] = input.SpendingOutput.TxID
 				}
 			}
 		}
 	}
 
-	return lo.Keys(dereferencedAddresses), nil
+	return dereferencedAddresses, nil
 }
 
 func getTransactionsOutputsForStore(tx *blockchain.Transaction) []*utxostore.TransactionOutput {

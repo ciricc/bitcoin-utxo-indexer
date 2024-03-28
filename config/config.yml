@@ -4,7 +4,7 @@ environment: "dev"
 
 blockchainNode:
   # The URL of the Bitcoin Core node REST interface
-  restURL: http://195.2.78.229:8332/rest
+  restURL: http://185.217.197.65:8332/rest
 
 blockchainBlocksIterator:
   # How much headers we can store in memory
@@ -38,5 +38,5 @@ utxo:
     # Redis storage configration for the scanner state
     redis:
       host: 195.2.78.229:6379
-      username: utxo
-      password: fEcONJORtFAr
+      # username: utxo
+      # password: fEcONJORtFAr
