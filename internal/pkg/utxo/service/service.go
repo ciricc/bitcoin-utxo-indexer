@@ -20,6 +20,7 @@ type UTXOStore interface {
 	WithStorer(storer keyvaluestore.Store, sets sets.Sets) *utxostore.Store
 	GetUnspentOutputsByAddress(_ context.Context, address string) ([]*utxostore.TransactionOutput, error)
 	GetBlockHeight(_ context.Context) (int64, error)
+	GetBlockHash(_ context.Context) (string, error)
 }
 
 type ServiceOptions struct {
@@ -63,6 +64,15 @@ func New[T any](
 		logger:    defaultOptions.Logger,
 		txManager: txManager,
 	}
+}
+
+func (u *Service[T]) GetBlockHash(ctx context.Context) (string, error) {
+	hash, err := u.s.GetBlockHash(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get block hash from store: %w", err)
+	}
+
+	return hash, nil
 }
 
 func (u *Service[T]) GetBlockHeight(ctx context.Context) (int64, error) {
@@ -128,6 +138,10 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 				return ErrBlockAlreadyStored
 			}
 
+			return err
+		}
+
+		if err := utxoStoreWithTx.SetBlockHash(ctx, block.GetHash().String()); err != nil {
 			return err
 		}
 

@@ -2,12 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/ciricc/btc-utxo-indexer/config"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/chainstate"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/scanner"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/state"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/di"
@@ -16,6 +21,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
+	"github.com/syndtr/goleveldb/leveldb"
 	"google.golang.org/grpc"
 )
 
@@ -31,15 +37,6 @@ func main() {
 	do.Provide(i, di.NewBlockchainScanner)
 	do.Provide(i, di.NewRedisSets)
 
-	// do.Provide(i, di.NewUTXOLevelDB)
-	// do.Provide(i, di.NewUTXOLevelDBStore)
-	// do.Provide(i, di.NewLevelDBTxManager)
-
-	// do.Provide(i, di.NewInMemoryStore)
-	// do.Provide(i, di.NewUTXOInMemoryStore)
-	// do.Provide(i, di.NewInMemoryTxManager)
-	// do.Provide(i, di.NewUTXOStoreWithInMemoryStore)
-
 	do.Provide(i, di.GetUTXOStoreConstructor[redis.Pipeliner]())
 
 	do.Provide(i, di.NewUTXORedisStore)
@@ -51,6 +48,51 @@ func main() {
 	do.Provide(i, di.GetUTXOServiceConstructor[redis.Pipeliner]())
 	do.Provide(i, di.GeUTXOGRPCHandlersConstructor[redis.Pipeliner]())
 	do.Provide(i, di.GetScannerStateConstructor[redis.Pipeliner]())
+
+	chainStateLdb, err := leveldb.OpenFile("/home/ciricc/.bitcoin/chainstate", nil)
+	if err != nil {
+		panic(err)
+	}
+
+	chaindtateDB, err := chainstate.NewDB(chainStateLdb)
+	if err != nil {
+		panic(err)
+	}
+
+	blockHash, err := chaindtateDB.GetBlockHash(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	log.Println("blockHash", hex.EncodeToString(blockHash))
+	return
+
+	utxoIterator := chaindtateDB.NewUTXOIterator()
+
+	for {
+		xOut, ok, err := utxoIterator.Next(context.Background())
+		if err != nil {
+			panic(err)
+		}
+
+		if !ok {
+			continue
+		}
+
+		disassembled, err := txscript.ParsePkScript(xOut.GetCoin().GetOut().PkScript)
+		if err != nil {
+			panic(err)
+		}
+
+		addr, _ := disassembled.Address(&chaincfg.MainNetParams)
+		if addr != nil {
+			log.Println("address", addr.EncodeAddress())
+		}
+
+		log.Println("xout", xOut.GetTxID(), xOut.Index(), xOut.GetCoin().BlockHeight())
+	}
+
+	return
 
 	logger, err := do.Invoke[*zerolog.Logger](i)
 	if err != nil {

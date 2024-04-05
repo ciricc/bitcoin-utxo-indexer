@@ -30,6 +30,10 @@ type Config struct {
 	}
 
 	UTXO struct {
+		Snapshot struct {
+			FilePath string `yaml:"filePath"`
+		} `yaml:"snapshot"`
+
 		Service struct {
 			GRPC struct {
 				Address string `yaml:"address"`

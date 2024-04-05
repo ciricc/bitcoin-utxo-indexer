@@ -31,7 +31,7 @@ func (u *Store) WithStorer(storer keyvaluestore.Store, sets sets.Sets) *Store {
 }
 
 func (u *Store) GetBlockHeight(_ context.Context) (int64, error) {
-	blockHeightKey := newBlockheightKey()
+	blockHeightKey := newBlockHeightKey()
 
 	var currentBlockHeight int64
 
@@ -43,12 +43,36 @@ func (u *Store) GetBlockHeight(_ context.Context) (int64, error) {
 	return currentBlockHeight, nil
 }
 
+func (u *Store) GetBlockHash(_ context.Context) (string, error) {
+	blockHashKey := newBlockHashKey()
+
+	var currentBlockHash string
+
+	_, err := u.s.Get(blockHashKey.String(), &currentBlockHash)
+	if err != nil {
+		return "", fmt.Errorf("failed to get current block hash: %w", err)
+	}
+
+	return currentBlockHash, nil
+}
+
 func (u *Store) SetBlockHeight(_ context.Context, blockHeight int64) error {
-	blockHeightKey := newBlockheightKey()
+	blockHeightKey := newBlockHeightKey()
 
 	err := u.s.Set(blockHeightKey.String(), blockHeight)
 	if err != nil {
 		return fmt.Errorf("failed to store new block height: %w", err)
+	}
+
+	return nil
+}
+
+func (u *Store) SetBlockHash(_ context.Context, blockHash string) error {
+	blockHashKey := newBlockHashKey()
+
+	err := u.s.Set(blockHashKey.String(), blockHash)
+	if err != nil {
+		return fmt.Errorf("failed to store new block hash: %w", err)
 	}
 
 	return nil
