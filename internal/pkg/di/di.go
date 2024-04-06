@@ -23,6 +23,7 @@ import (
 	redistx "github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/drivers/redis"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/restclient"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
 	grpchandlers "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/transport/grpc"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
@@ -75,13 +76,13 @@ func NewBitcoinBlocksIterator(i *do.Injector) (*bitcoinblocksiterator.BitcoinBlo
 		return nil, fmt.Errorf("invoke logger error: %w", err)
 	}
 
-	nodeRestURL, err := url.Parse(cfg.BlockchainNode.RestURL)
+	nodeRESTClient, err := do.Invoke[*restclient.RESTClient](i)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse blockchain node rest url: %w", err)
+		return nil, fmt.Errorf("invoke universal bitcoin rest client error: %w", err)
 	}
 
 	bitcoinBlocksIterator, err := bitcoinblocksiterator.NewBitcoinBlocksIterator(
-		nodeRestURL,
+		nodeRESTClient,
 		bitcoinblocksiterator.WithBlockHeadersBufferSize(cfg.BlockchainBlocksIterator.BlockHeadersBufferSize),
 		bitcoinblocksiterator.WithConcurrentBlocksDownloadLimit(cfg.BlockchainBlocksIterator.ConcurrentBlocksDownloadLimit),
 		bitcoinblocksiterator.WithLogger(logger),
@@ -337,6 +338,25 @@ func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T]] {
 
 		return utxoStoreService, nil
 	}
+}
+
+func NewUniversalBitcoinRESTClient(i *do.Injector) (*restclient.RESTClient, error) {
+	cfg, err := do.Invoke[*config.Config](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke configuration: %w", err)
+	}
+
+	nodeURL, err := url.Parse(cfg.BlockchainNode.RestURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse blockchain node rest url: %w", err)
+	}
+
+	restClient, err := restclient.New(nodeURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rest client: %w", err)
+	}
+
+	return restClient, nil
 }
 
 func NewLogger(i *do.Injector) (*zerolog.Logger, error) {

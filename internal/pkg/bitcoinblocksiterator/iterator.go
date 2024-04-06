@@ -3,27 +3,30 @@ package bitcoinblocksiterator
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/semaphore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/restclient"
 	"github.com/puzpuzpuz/xsync"
 )
+
+type BlockchainRESTClient interface {
+	GetBlock(ctx context.Context, hash blockchain.Hash) (*blockchain.Block, error)
+	GetBlockHeader(ctx context.Context, hash blockchain.Hash) (*blockchain.BlockHeader, error)
+}
 
 // BitcoinBlocksIterator is an iterator for getting the blocks from the bitcoin blockchain
 // It is used for getting the blocks from the blockchain in the right order
 type BitcoinBlocksIterator struct {
 	opts *BitcooinBlocksIteratorOptions
 
-	restClient *restclient.RESTClient
+	restClient BlockchainRESTClient
 }
 
 func NewBitcoinBlocksIterator(
-	nodeHost *url.URL,
+	universalRESTClient BlockchainRESTClient,
 	opts ...BitcoinBlocksIteratorOption,
 ) (*BitcoinBlocksIterator, error) {
 	options, err := buildOptions(opts...)
@@ -31,14 +34,9 @@ func NewBitcoinBlocksIterator(
 		return nil, err
 	}
 
-	restClient, err := restclient.New(nodeHost, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create rest client: %w", err)
-	}
-
 	return &BitcoinBlocksIterator{
 		opts:       options,
-		restClient: restClient,
+		restClient: universalRESTClient,
 	}, nil
 }
 

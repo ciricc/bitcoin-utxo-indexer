@@ -4,7 +4,7 @@ environment: "dev"
 
 blockchainNode:
   # The URL of the Bitcoin Core node REST interface
-  restURL: http://185.217.197.65:8332/rest
+  restURL: http://localhost:19001/rest
 
 blockchainBlocksIterator:
   # How much headers we can store in memory

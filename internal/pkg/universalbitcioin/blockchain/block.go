@@ -17,6 +17,12 @@ func (b *Block) GetTransactions() []*Transaction {
 	return b.Transactions
 }
 
+type BlockchainInfo struct {
+	Chain   string `json:"chain"`
+	Blocks  int64  `json:"blocks"`
+	Headers int64  `json:"headers"`
+}
+
 // BlockHeader is a structure for storing the block header data
 // It is used for getting the block header from the blockchain
 // This realisation is most compatible with bitcoin blockchain

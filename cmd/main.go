@@ -48,6 +48,7 @@ func main() {
 	do.Provide(i, di.GetUTXOServiceConstructor[redis.Pipeliner]())
 	do.Provide(i, di.GeUTXOGRPCHandlersConstructor[redis.Pipeliner]())
 	do.Provide(i, di.GetScannerStateConstructor[redis.Pipeliner]())
+	do.Provide(i, di.NewUniversalBitcoinRESTClient)
 
 	chainStateLdb, err := leveldb.OpenFile("/home/ciricc/.bitcoin/chainstate", nil)
 	if err != nil {

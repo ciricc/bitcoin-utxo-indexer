@@ -49,9 +49,24 @@ func New(nodeRestURL *url.URL, opts *RESTClientOptions) (*RESTClient, error) {
 	}, nil
 }
 
+func (r *RESTClient) GetBlockchainInfo(ctx context.Context) (*blockchain.BlockchainInfo, error) {
+	var info blockchain.BlockchainInfo
+
+	res, err := r.callRest(ctx, buildJsonMethodPath("chaininfo"), &info)
+	if err != nil && res == nil {
+		return nil, fmt.Errorf("failed to get blockchain info: %w", err)
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return nil, newBadStatusCodeError(res.StatusCode)
+	}
+
+	return &info, nil
+}
+
 func (r *RESTClient) GetBlockHeader(
 	ctx context.Context,
-	hash Hash,
+	hash blockchain.Hash,
 ) (*blockchain.BlockHeader, error) {
 	var header blockchain.BlockHeader
 
@@ -77,7 +92,7 @@ func (r *RESTClient) GetBlockHeader(
 
 func (r *RESTClient) GetBlock(
 	ctx context.Context,
-	hash Hash,
+	hash blockchain.Hash,
 ) (*blockchain.Block, error) {
 	var block blockchain.Block
 
