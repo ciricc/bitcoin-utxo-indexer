@@ -9,6 +9,10 @@ type BigFloat struct {
 	big.Float
 }
 
+func NewBigFloat(f big.Float) *BigFloat {
+	return &BigFloat{f}
+}
+
 func (b *BigFloat) MarshalJSON() ([]byte, error) {
 	return []byte(b.String()), nil
 }

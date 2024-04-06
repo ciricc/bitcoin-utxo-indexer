@@ -2,9 +2,18 @@ package chainstatemigration
 
 import (
 	"context"
+	"encoding/hex"
+	"errors"
+	"fmt"
 
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/txscript"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bigjson"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/chainstate"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/utxo"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
+	"github.com/rs/zerolog"
+	"github.com/shopspring/decimal"
 )
 
 type ChainstateDB interface {
@@ -13,49 +22,148 @@ type ChainstateDB interface {
 	GetBlockHash(ctx context.Context) ([]byte, error)
 }
 
-type BlockchainRESTClient interface {
-	GetBlockchainInfo(ctx context.Context) (*blockchain.BlockchainInfo, error)
+type UTXOStore interface {
+	AddTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
+	SetBlockHeight(ctx context.Context, blockHeight int64) error
+	SetBlockHash(ctx context.Context, blockHash string) error
 }
 
-type UTXOService interface {
-	GetBlockHeight(ctx context.Context) (int64, error)
-	GetBlockHash(ctx context.Context) (string, error)
+type BitcoinConfig interface {
+	GetDecimals() int
+	GetParams() *chaincfg.Params
 }
 
 type Migrator struct {
-	cdb         ChainstateDB
-	utxoService UTXOService
+	// The chainstate from which to migrate the UTXOs.
+	cdb ChainstateDB
+
+	// The UTXO store to migrate the UTXOs to.
+	utxoStore UTXOStore
+
+	// Configration of the bitcoin
+	bitcoinConfig BitcoinConfig
+
+	// The block height of the chainstate. This is used to set the block height in the UTXO store.
+	chainstateBlockHeight int64
+
+	// Logger
+	logger *zerolog.Logger
 }
 
 func NewMigrator(
+	logger *zerolog.Logger,
+
 	cdb ChainstateDB,
-	node BlockchainRESTClient,
-	utxoService UTXOService,
-	migrateToService UTXOService,
+	utxoStore UTXOStore,
+	bitcoinConfig BitcoinConfig,
+
+	chainstateBlockHeight int64,
 ) *Migrator {
 	return &Migrator{
-		cdb:         cdb,
-		utxoService: utxoService,
+		logger: logger,
+
+		cdb:           cdb,
+		utxoStore:     utxoStore,
+		bitcoinConfig: bitcoinConfig,
+
+		chainstateBlockHeight: chainstateBlockHeight,
 	}
 }
 
 // Migrate migrates the UTXO from the chainstate database to the UTXO store.
-//
-// We migrate the data from chainstate only if the chainstate has more relevant data than the UTXO store.
-// The migration process consists of the following steps:
-// 1. Get the block height from the UTXO store.
-// 2. Get the block height from the chainstate database.
-// 3. If the chainstate block height is less than the UTXO store block height, return.
-// 4. If the block hash not found in the node, return.
-// 5. Create the temporal UTXO store.
-// 6. Iterate over the UTXO from the chainstate database.
-// 7. For each UTXO, add it to the temporal UTXO store through the UTXO service.
-// 8. Replace the UTXO store with the temporal UTXO store.
-//
-// If the migration fails, the UTXO service will continue to use the old UTXO store.
-// If the migration succeeds, the UTXO service will use the new UTXO store.
-// If them igration failed, after restart the migration will be retried again with the new temporal UTXO store.
-// Previous UTXO store will be deleted.
 func (m *Migrator) Migrate(ctx context.Context) error {
+	m.logger.Info().Msg("migrating UTXOs from chainstate to UTXO store")
+
+	utxoIterator := m.cdb.NewUTXOIterator()
+
+	utxoByTxID := []*utxo.TxOut{}
+	currentTxID := ""
+
+	for {
+		currentUTXO, err := utxoIterator.Next(ctx)
+		if err != nil {
+			if errors.Is(err, chainstate.ErrNoKeysMore) {
+				break
+			}
+
+			return fmt.Errorf("failed to iterate UTXOs: %w", err)
+		}
+
+		if currentTxID != currentUTXO.GetTxID() {
+			if len(utxoByTxID) > 0 {
+				m.logger.Debug().
+					Str("txid", currentTxID).
+					Str("txOutCount", fmt.Sprintf("%d", len(utxoByTxID))).
+					Msg("migrating UTXO")
+
+				// migrate utxo grouped by tx id
+				outputs := convertUTXOlistToTransactionOutputList(m.bitcoinConfig, utxoByTxID)
+				if err := m.utxoStore.AddTransactionOutputs(ctx, currentTxID, outputs); err != nil {
+					return fmt.Errorf("failed to add transaction outputs: %w", err)
+				}
+			}
+
+			m.logger.Debug().
+				Str("currentTxID", currentTxID).
+				Str("newTxID", currentUTXO.GetTxID()).
+				Msg("new txid found")
+
+			currentTxID = currentUTXO.GetTxID()
+			utxoByTxID = []*utxo.TxOut{}
+		}
+
+		utxoByTxID = append(utxoByTxID, currentUTXO)
+	}
+
+	m.logger.Info().Msg("migrating block hash and height")
+	blockHash, err := m.cdb.GetBlockHash(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get block hash: %w", err)
+	}
+
+	m.logger.Debug().
+		Str("blockHash", hex.EncodeToString(blockHash)).
+		Int64("blockHeight", m.chainstateBlockHeight).
+		Msg("migrate block hash and height")
+
+	err = m.utxoStore.SetBlockHash(ctx, hex.EncodeToString(blockHash))
+	if err != nil {
+		return fmt.Errorf("failed to set block hash: %w", err)
+	}
+
+	err = m.utxoStore.SetBlockHeight(ctx, m.chainstateBlockHeight)
+	if err != nil {
+		return fmt.Errorf("failed to set block height: %w", err)
+	}
+
+	m.logger.Info().Msg("migrated UTXOs from chainstate to UTXO store")
 	return nil
+}
+
+func convertUTXOlistToTransactionOutputList(bitcoinConfig BitcoinConfig, utxos []*utxo.TxOut) []*utxostore.TransactionOutput {
+	outputs := make([]*utxostore.TransactionOutput, 0, len(utxos))
+	decimals := decimal.NewFromInt(int64(bitcoinConfig.GetDecimals()))
+
+	for _, utxo := range utxos {
+
+		addresses := []string{}
+		amountBigF64 := decimal.NewFromInt(utxo.GetCoin().GetOut().Value).Div(decimals).BigFloat()
+
+		if script, err := txscript.ParsePkScript(utxo.GetCoin().GetOut().PkScript); err == nil {
+			address, err := script.Address(bitcoinConfig.GetParams())
+			if err == nil {
+				// address is not nil
+				// do something with address
+				addresses = append(addresses, address.EncodeAddress())
+			}
+		}
+
+		outputs = append(outputs, &utxostore.TransactionOutput{
+			ScriptBytes: hex.EncodeToString(utxo.GetCoin().GetOut().PkScript),
+			Amount:      *bigjson.NewBigFloat(*amountBigF64),
+			Addresses:   addresses,
+		})
+	}
+
+	return outputs
 }

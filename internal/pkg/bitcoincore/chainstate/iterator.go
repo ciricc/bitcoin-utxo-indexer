@@ -24,16 +24,16 @@ func newUTXOIterator(
 	}
 }
 
-func (u *UTXOIterator) Next(ctx context.Context) (*utxo.TxOut, bool, error) {
+func (u *UTXOIterator) Next(ctx context.Context) (*utxo.TxOut, error) {
 	if !u.iterator.Next() {
-		return nil, false, ErrNoKeysMore
+		return nil, ErrNoKeysMore
 	}
 
 	outpoint := u.iterator.Key()
 
 	// is not an outpoint
 	if len(outpoint) < 34 || !(len(outpoint) >= 1 && outpoint[0] == 0x43) {
-		return nil, false, nil
+		return u.Next(ctx)
 	}
 
 	outpoint = outpoint[1:]
@@ -42,7 +42,7 @@ func (u *UTXOIterator) Next(ctx context.Context) (*utxo.TxOut, bool, error) {
 
 	deobfuscatedValue, err := u.deobfuscator.Deobfuscate(ctx, obfuscatedValue)
 	if err != nil {
-		return nil, true, fmt.Errorf("deobfuscate UTXO error: %w", err)
+		return nil, fmt.Errorf("deobfuscate UTXO error: %w", err)
 	}
 
 	fullTxOut := make([]byte, 0, len(outpoint)+len(deobfuscatedValue))
@@ -53,10 +53,10 @@ func (u *UTXOIterator) Next(ctx context.Context) (*utxo.TxOut, bool, error) {
 	txOut := utxo.NewTxOut()
 
 	if err := txOut.Deserialize(bytes.NewReader(fullTxOut)); err != nil {
-		return nil, true, fmt.Errorf("deserialize UTXO error: %w", err)
+		return nil, fmt.Errorf("deserialize UTXO error: %w", err)
 	}
 
-	return txOut, true, nil
+	return txOut, nil
 }
 
 // deserializeVLQ deserializes the provided variable-length quantity according
