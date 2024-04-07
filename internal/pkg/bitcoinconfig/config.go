@@ -32,6 +32,7 @@ func New(
 	mainParams.Name = "main"
 
 	params := []*chaincfg.Params{
+		&mainParams,
 		&chaincfg.MainNetParams,
 		&chaincfg.TestNet3Params,
 		&chaincfg.RegressionNetParams,
