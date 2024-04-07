@@ -122,7 +122,7 @@ func (u *Store) GetUnspentOutputsByAddress(_ context.Context, address string) ([
 	for _, txID := range txIDsWithOutputs {
 		var outputs []*TransactionOutput
 
-		found, err := u.s.Get(newTransactionIDKey(u.dbVer, txID, true).String(), &outputs)
+		found, err := u.s.Get(newTransactionIDKey(u.dbVer, txID).String(), &outputs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get outputs: %w", err)
 		}
@@ -151,7 +151,7 @@ func (u *Store) GetOutputsByTxID(
 ) ([]*TransactionOutput, error) {
 	var outputs []*TransactionOutput
 
-	ok, err := u.s.Get(newTransactionIDKey(u.dbVer, txID, true).String(), &outputs)
+	ok, err := u.s.Get(newTransactionIDKey(u.dbVer, txID).String(), &outputs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get outputs: %w", err)
 	}
@@ -177,7 +177,7 @@ func (u *Store) SpendAllOutputs(
 	_ context.Context,
 	txID string,
 ) error {
-	var txOutputsKey = newTransactionIDKey(u.dbVer, txID, true)
+	var txOutputsKey = newTransactionIDKey(u.dbVer, txID)
 	if err := u.s.Delete(txOutputsKey.String()); err != nil {
 		return fmt.Errorf("delete outputs error: %w", err)
 	}
@@ -191,7 +191,7 @@ func (u *Store) SpendOutput(
 	idx int,
 ) ([]string, *TransactionOutput, error) {
 	var outputs []*TransactionOutput
-	var txOutputsKey = newTransactionIDKey(u.dbVer, txID, true)
+	var txOutputsKey = newTransactionIDKey(u.dbVer, txID)
 
 	found, err := u.s.Get(txOutputsKey.String(), &outputs)
 	if err != nil {
@@ -210,7 +210,7 @@ func (u *Store) spendOutput(
 	idx int,
 	outputs []*TransactionOutput,
 ) ([]string, *TransactionOutput, error) {
-	var txOutputsKey = newTransactionIDKey(u.dbVer, txID, true)
+	var txOutputsKey = newTransactionIDKey(u.dbVer, txID)
 
 	if idx < 0 || idx >= len(outputs) {
 		return nil, nil, ErrNotFound
@@ -307,7 +307,7 @@ func (u *Store) AddTransactionOutputs(
 }
 
 func (u *Store) setNewTxOutputs(txID string, outputs []*TransactionOutput) error {
-	txOutputsKey := newTransactionIDKey(u.dbVer, txID, true)
+	txOutputsKey := newTransactionIDKey(u.dbVer, txID)
 
 	err := u.s.Set(txOutputsKey.String(), outputs)
 	if err != nil {

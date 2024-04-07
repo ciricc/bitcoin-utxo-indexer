@@ -13,8 +13,8 @@ var (
 )
 
 const (
-	addressKeyType       = "addr"
-	transactionIDKeyType = "tx"
+	addressKeyType       = "a"
+	transactionIDKeyType = "t"
 	blockheightKeyType   = "b"
 )
 
@@ -48,20 +48,15 @@ func newAddressUTXOTxIDsSetKey(ver string, address string) *storageKey {
 	return &storageKey{
 		dbVer:  ver,
 		prefix: addressKeyType,
-		key:    fmt.Sprintf("%s:set", address),
+		key:    address,
 	}
 }
 
-func newTransactionIDKey(ver, txID string, isOutputs bool) *storageKey {
-	suffix := "outputs"
-	if !isOutputs {
-		suffix = "inputs"
-	}
-
+func newTransactionIDKey(ver, txID string) *storageKey {
 	return &storageKey{
 		dbVer:  ver,
 		prefix: transactionIDKeyType,
-		key:    fmt.Sprintf("%s:%s", txID, suffix),
+		key:    txID,
 	}
 }
 
