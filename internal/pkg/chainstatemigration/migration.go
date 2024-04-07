@@ -20,6 +20,7 @@ type ChainstateDB interface {
 	NewUTXOIterator() *chainstate.UTXOIterator
 	GetDeobfuscator() *chainstate.ChainstateDeobfuscator
 	GetBlockHash(ctx context.Context) ([]byte, error)
+	ApproximateSize() (int64, error)
 }
 
 type UTXOStore interface {
@@ -81,10 +82,17 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 		return fmt.Errorf("failed to flush store: %w", err)
 	}
 
+	countOfKeys, err := m.cdb.ApproximateSize()
+	if err != nil {
+		return fmt.Errorf("failed to get chainstate approximate size: %w", err)
+	}
+
 	utxoIterator := m.cdb.NewUTXOIterator()
 
 	utxoByTxID := []*utxo.TxOut{}
 	currentTxID := ""
+
+	var keyI int64 = 0
 
 	for {
 		currentUTXO, err := utxoIterator.Next(ctx)
@@ -96,11 +104,14 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 			return fmt.Errorf("failed to iterate UTXOs: %w", err)
 		}
 
+		keyI++
+
 		if currentTxID != currentUTXO.GetTxID() {
 			if len(utxoByTxID) > 0 {
 				m.logger.Debug().
 					Str("txid", currentTxID).
 					Str("txOutCount", fmt.Sprintf("%d", len(utxoByTxID))).
+					Str("migrationProgress", fmt.Sprintf("%.2f", percentage(keyI, countOfKeys))).
 					Msg("migrating UTXO")
 
 				// migrate utxo grouped by tx id
@@ -175,4 +186,14 @@ func convertUTXOlistToTransactionOutputList(bitcoinConfig BitcoinConfig, utxos [
 	}
 
 	return outputs
+}
+
+func percentage[T ~int64](a T, b T) float64 {
+	if b == 0 {
+		return 0
+	}
+
+	f := int64(float64(a) / float64(b) * 100_00)
+
+	return float64(f) / 100
 }

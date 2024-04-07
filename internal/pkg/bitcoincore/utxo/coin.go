@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 
 	"github.com/btcsuite/btcd/wire"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/binaryutils"
@@ -113,8 +112,6 @@ func readUvarint32(r io.ByteReader) (uint32, error) {
 	if uv > 0xFFFFFFFF {
 		return 0, fmt.Errorf("value %d overflows uint32", uv)
 	}
-
-	log.Println("varint", uv)
 
 	// Cast the uint64 to uint32 safely and return.
 	return uint32(uv), nil

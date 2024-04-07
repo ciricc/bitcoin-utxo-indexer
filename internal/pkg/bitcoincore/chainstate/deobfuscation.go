@@ -15,6 +15,7 @@ import (
 type LevelDB interface {
 	Get(key []byte, ro *opt.ReadOptions) (value []byte, err error)
 	NewIterator(slice *util.Range, ro *opt.ReadOptions) iterator.Iterator
+	SizeOf(ranges []util.Range) (leveldb.Sizes, error)
 }
 
 type Deobfuscator interface {

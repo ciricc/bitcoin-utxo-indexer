@@ -3,7 +3,6 @@ package utxo
 import (
 	"encoding/hex"
 	"fmt"
-	"log"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/binaryutils"
 )
@@ -41,8 +40,6 @@ func (t *TxOut) Deserialize(r BytesBuffer) error {
 
 	txID = binaryutils.ReverseBytesWithCopy(txID)
 	t.txID = txID
-
-	log.Println("txID", hex.EncodeToString(txID))
 
 	index, _, err := binaryutils.DeserializeVLQ(r)
 	if err != nil {

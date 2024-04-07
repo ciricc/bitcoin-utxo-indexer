@@ -24,6 +24,20 @@ func NewDB(ldb LevelDB) (*DB, error) {
 	}, nil
 }
 
+func (d *DB) ApproximateSize() (int64, error) {
+	iterator := d.ldb.NewIterator(nil, nil)
+	var size int64 = 0
+	for iterator.Next() {
+		size++
+	}
+
+	if err := iterator.Error(); err != nil {
+		return 0, fmt.Errorf("iterator error: %w", err)
+	}
+
+	return size, nil
+}
+
 func (d *DB) NewUTXOIterator() *UTXOIterator {
 	ldbIterator := d.ldb.NewIterator(nil, nil)
 
