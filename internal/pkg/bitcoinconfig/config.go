@@ -28,6 +28,9 @@ func New(
 
 	var useParams *chaincfg.Params
 
+	mainParams := chaincfg.MainNetParams
+	mainParams.Name = "main"
+
 	params := []*chaincfg.Params{
 		&chaincfg.MainNetParams,
 		&chaincfg.TestNet3Params,
