@@ -2,13 +2,24 @@ package blockchain
 
 import (
 	"encoding/hex"
+	"strconv"
 
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bigjson"
+	"github.com/shopspring/decimal"
 )
 
 type AmountValue struct {
 	bigjson.BigFloat
+}
+
+func (a *AmountValue) Uint64(decimals int) uint64 {
+	mulBy := decimal.New(1, int32(decimals))
+
+	amountF, _ := decimal.NewFromString(a.String())
+	amountInt, _ := strconv.ParseUint(amountF.Mul(mulBy).String(), 10, 64)
+
+	return amountInt
 }
 
 type CoinbaseInput struct {

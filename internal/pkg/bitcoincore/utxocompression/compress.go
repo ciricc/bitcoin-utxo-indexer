@@ -107,6 +107,33 @@ func DecompressScript(scriptType uint64, compressedPkScript []byte) []byte {
 	return compressedPkScript
 }
 
+func CompressTxOutAmount(amount uint64) uint64 {
+	// No need to do any work if it's zero.
+	if amount == 0 {
+		return 0
+	}
+
+	// Find the largest power of 10 (max of 9) that evenly divides the
+	// value.
+	exponent := uint64(0)
+	for amount%10 == 0 && exponent < 9 {
+		amount /= 10
+		exponent++
+	}
+
+	// The compressed result for exponents less than 9 is:
+	// 1 + 10*(9*n + d-1) + e
+	if exponent < 9 {
+		lastDigit := amount % 10
+		amount /= 10
+		return 1 + 10*(9*amount+lastDigit-1) + exponent
+	}
+
+	// The compressed result for an exponent of 9 is:
+	// 1 + 10*(n-1) + e   ==   10 + 10*(n-1)
+	return 10 + 10*(amount-1)
+}
+
 // DecompressTxOutAmount returns the original amount the passed compressed
 // amount represents according to the domain specific compression algorithm
 // described above.

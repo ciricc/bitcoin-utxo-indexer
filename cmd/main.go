@@ -9,7 +9,6 @@ import (
 
 	"github.com/ciricc/btc-utxo-indexer/config"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/app"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoinconfig"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/chainstate"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/scanner"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/state"
@@ -46,6 +45,7 @@ func main() {
 
 	app.ProvideCommonDeps(utxoContainer)
 	app.ProvideRedisDeps(utxoContainer)
+	app.ProvideBitcoinCoreDeps(utxoContainer)
 	app.ProvideUTXOStoreDeps(utxoContainer)
 	app.ProvideUTXOServiceDeps(utxoContainer)
 
@@ -286,11 +286,6 @@ func runChainstateMigration(chainstateContainer *do.Injector) error {
 		return fmt.Errorf("failed to invoke chainstate db: %w", err)
 	}
 
-	bitcoinConfig, err := do.Invoke[*bitcoinconfig.BitcoinConfig](chainstateContainer)
-	if err != nil {
-		return fmt.Errorf("failed to invoke bitcoin config: %w", err)
-	}
-
 	logger, err := do.Invoke[*zerolog.Logger](chainstateContainer)
 	if err != nil {
 		return fmt.Errorf("failed to invoke logger: %w", err)
@@ -331,7 +326,6 @@ func runChainstateMigration(chainstateContainer *do.Injector) error {
 		logger,
 		chainstateDB,
 		utxoStore,
-		bitcoinConfig,
 		blockInfo.Height,
 	)
 

@@ -8,13 +8,10 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/txscript"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bigjson"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/chainstate"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/utxo"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/rs/zerolog"
-	"github.com/shopspring/decimal"
 )
 
 type ChainstateDB interface {
@@ -43,9 +40,6 @@ type Migrator struct {
 	// The UTXO store to migrate the UTXOs to.
 	utxoStore UTXOStore
 
-	// Configration of the bitcoin
-	bitcoinConfig BitcoinConfig
-
 	// The block height of the chainstate. This is used to set the block height in the UTXO store.
 	chainstateBlockHeight int64
 
@@ -58,16 +52,14 @@ func NewMigrator(
 
 	cdb ChainstateDB,
 	utxoStore UTXOStore,
-	bitcoinConfig BitcoinConfig,
 
 	chainstateBlockHeight int64,
 ) *Migrator {
 	return &Migrator{
 		logger: logger,
 
-		cdb:           cdb,
-		utxoStore:     utxoStore,
-		bitcoinConfig: bitcoinConfig,
+		cdb:       cdb,
+		utxoStore: utxoStore,
 
 		chainstateBlockHeight: chainstateBlockHeight,
 	}
@@ -121,7 +113,7 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 		if currentTxID != currentUTXO.GetTxID() {
 			if len(utxoByTxID) > 0 {
 				// migrate utxo grouped by tx id
-				outputs := convertUTXOlistToTransactionOutputList(m.bitcoinConfig, utxoByTxID)
+				outputs := convertUTXOlistToTransactionOutputList(utxoByTxID)
 				if err := m.utxoStore.AddTransactionOutputs(ctx, currentTxID, outputs); err != nil {
 					return fmt.Errorf("failed to add transaction outputs: %w", err)
 				}
@@ -159,30 +151,18 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 	return nil
 }
 
-func convertUTXOlistToTransactionOutputList(bitcoinConfig BitcoinConfig, utxos []*utxo.TxOut) []*utxostore.TransactionOutput {
+func convertUTXOlistToTransactionOutputList(utxos []*utxo.TxOut) []*utxostore.TransactionOutput {
 	outputs := make([]*utxostore.TransactionOutput, 0, len(utxos))
-	decimalsInt := bitcoinConfig.GetDecimals()
-
-	decimals := decimal.New(1, int32(decimalsInt))
 
 	for _, utxo := range utxos {
 
-		addresses := []string{}
-		amountBigF64 := decimal.NewFromInt(utxo.GetCoin().GetOut().Value).Div(decimals).BigFloat()
-
-		if script, err := txscript.ParsePkScript(utxo.GetCoin().GetOut().PkScript); err == nil {
-			address, err := script.Address(bitcoinConfig.GetParams())
-			if err == nil {
-				// address is not nil
-				// do something with address
-				addresses = append(addresses, address.EncodeAddress())
-			}
+		convertedOutput := &utxostore.TransactionOutput{
+			ScriptBytes: utxo.GetCoin().GetOut().PkScript,
 		}
 
-		outputs = append(outputs, &utxostore.TransactionOutput{
-			ScriptBytes: utxo.GetCoin().GetOut().PkScript,
-			Amount:      *bigjson.NewBigFloat(*amountBigF64),
-		})
+		convertedOutput.SetAmount(uint64(utxo.GetCoin().GetOut().Value))
+
+		outputs = append(outputs, convertedOutput)
 	}
 
 	return outputs

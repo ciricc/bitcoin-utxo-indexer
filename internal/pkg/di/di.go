@@ -367,11 +367,17 @@ func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T]] {
 			return nil, fmt.Errorf("failed to invoke tx manager: %w", err)
 		}
 
+		bitcoinConfig, err := do.Invoke[*bitcoinconfig.BitcoinConfig](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke bitcoin config: %w", err)
+		}
+
 		utxoStoreService := utxoservice.New(
 			utxoStore,
 			txManager,
 			utxoKVStore,
 			sets,
+			bitcoinConfig,
 			&utxoservice.ServiceOptions{
 				Logger: logger,
 			},

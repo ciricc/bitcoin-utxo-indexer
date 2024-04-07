@@ -6,12 +6,20 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bigjson"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/utxocompression"
 )
 
 type TransactionOutput struct {
-	ScriptBytes []byte           `json:"0"`
-	Amount      bigjson.BigFloat `json:"1"`
+	ScriptBytes      []byte `json:"0" msgpack:"0"`
+	CompressedAmount uint64 `json:"1" msgpack:"1"`
+}
+
+func (t *TransactionOutput) SetAmount(amount uint64) {
+	t.CompressedAmount = utxocompression.CompressTxOutAmount(amount)
+}
+
+func (t *TransactionOutput) GetAmount() uint64 {
+	return utxocompression.DecompressTxOutAmount(t.CompressedAmount)
 }
 
 func (t *TransactionOutput) GetAddresses() ([]string, error) {

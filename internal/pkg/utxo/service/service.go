@@ -34,9 +34,14 @@ type Service[T any] struct {
 	txManager *txmanager.TransactionManager[T]
 	txStore   keyvaluestore.StoreWithTxManager[T]
 	txSets    sets.SetsWithTxManager[T]
+	btcConfig BitcoinConfig
 
 	// logger is the logger used by the service.
 	logger *zerolog.Logger
+}
+
+type BitcoinConfig interface {
+	GetDecimals() int
 }
 
 func New[T any](
@@ -45,6 +50,7 @@ func New[T any](
 	txManager *txmanager.TransactionManager[T],
 	utxoKVStore keyvaluestore.StoreWithTxManager[T],
 	sets sets.SetsWithTxManager[T],
+	bitcoinConfig BitcoinConfig,
 
 	options *ServiceOptions,
 ) *Service[T] {
@@ -141,7 +147,7 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 
 		for _, tx := range block.GetTransactions() {
 
-			convertedOutputs, err := getTransactionsOutputsForStore(tx)
+			convertedOutputs, err := getTransactionsOutputsForStore(u.btcConfig, tx)
 			if err != nil {
 				return err
 			}
@@ -210,7 +216,7 @@ func (s *Service[T]) getSpeningOutputs(
 	outputs := map[string][]*utxostore.TransactionOutput{}
 
 	for _, tx := range tx.GetTransactions() {
-		convertedOutputs, err := getTransactionsOutputsForStore(tx)
+		convertedOutputs, err := getTransactionsOutputsForStore(s.btcConfig, tx)
 		if err != nil {
 			return nil, err
 		}
@@ -300,7 +306,9 @@ func (s *Service[T]) spendOutputs(
 	return dereferencedAddresses, nil
 }
 
-func getTransactionsOutputsForStore(tx *blockchain.Transaction) ([]*utxostore.TransactionOutput, error) {
+func getTransactionsOutputsForStore(btcConfig BitcoinConfig, tx *blockchain.Transaction) ([]*utxostore.TransactionOutput, error) {
+	decimals := btcConfig.GetDecimals()
+
 	outputs := tx.GetOutputs()
 	if len(outputs) == 0 {
 		return nil, nil
@@ -314,10 +322,14 @@ func getTransactionsOutputsForStore(tx *blockchain.Transaction) ([]*utxostore.Tr
 				return nil, fmt.Errorf("failed to convert script to bytes: %w", err)
 			}
 
-			convertedOutputs[i] = &utxostore.TransactionOutput{
+			convertedOutput := &utxostore.TransactionOutput{
 				ScriptBytes: scriptBytes,
-				Amount:      output.Value.BigFloat,
 			}
+
+			convertedOutput.SetAmount(output.Value.Uint64(decimals))
+
+			convertedOutputs[i] = convertedOutput
+
 		} else {
 			// is unspendable output, so, we push it as already "spent"
 			convertedOutputs[i] = nil
