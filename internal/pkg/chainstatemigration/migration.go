@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
@@ -87,12 +88,23 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 		return fmt.Errorf("failed to get chainstate approximate size: %w", err)
 	}
 
+	m.logger.Debug().Int64("keys", countOfKeys).Msg("chainstate keys count")
+
 	utxoIterator := m.cdb.NewUTXOIterator()
 
 	utxoByTxID := []*utxo.TxOut{}
 	currentTxID := ""
 
 	var keyI int64 = 0
+
+	ticker := time.NewTicker(time.Second * 10)
+	defer ticker.Stop()
+
+	go func() {
+		for range ticker.C {
+			m.logger.Info().Float64("progress", percentage(keyI, countOfKeys)).Msg("migrating from chainstate")
+		}
+	}()
 
 	for {
 		currentUTXO, err := utxoIterator.Next(ctx)
@@ -108,23 +120,12 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 
 		if currentTxID != currentUTXO.GetTxID() {
 			if len(utxoByTxID) > 0 {
-				m.logger.Debug().
-					Str("txid", currentTxID).
-					Str("txOutCount", fmt.Sprintf("%d", len(utxoByTxID))).
-					Str("migrationProgress", fmt.Sprintf("%.2f", percentage(keyI, countOfKeys))).
-					Msg("migrating UTXO")
-
 				// migrate utxo grouped by tx id
 				outputs := convertUTXOlistToTransactionOutputList(m.bitcoinConfig, utxoByTxID)
 				if err := m.utxoStore.AddTransactionOutputs(ctx, currentTxID, outputs); err != nil {
 					return fmt.Errorf("failed to add transaction outputs: %w", err)
 				}
 			}
-
-			m.logger.Debug().
-				Str("currentTxID", currentTxID).
-				Str("newTxID", currentUTXO.GetTxID()).
-				Msg("new txid found")
 
 			currentTxID = currentUTXO.GetTxID()
 			utxoByTxID = []*utxo.TxOut{}
@@ -188,7 +189,7 @@ func convertUTXOlistToTransactionOutputList(bitcoinConfig BitcoinConfig, utxos [
 	return outputs
 }
 
-func percentage[T ~int64](a T, b T) float64 {
+func percentage[T int | int64](a T, b T) float64 {
 	if b == 0 {
 		return 0
 	}
