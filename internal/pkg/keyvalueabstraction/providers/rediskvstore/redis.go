@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/encoding"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
-	"github.com/philippgille/gokv/encoding"
+
+	// "github.com/philippgille/gokv/encoding"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -19,7 +21,7 @@ type RedisStore struct {
 func New(redis redis.Cmdable) *RedisStore {
 	return &RedisStore{
 		redis:  redis,
-		encode: encoding.JSON,
+		encode: encoding.MsgPack,
 	}
 }
 

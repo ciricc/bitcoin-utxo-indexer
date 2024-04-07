@@ -10,17 +10,12 @@ import (
 )
 
 type TransactionOutput struct {
-	ScriptBytes string           `json:"0"`
+	ScriptBytes []byte           `json:"0"`
 	Amount      bigjson.BigFloat `json:"1"`
 }
 
 func (t *TransactionOutput) GetAddresses() ([]string, error) {
-	scriptBytes, err := hex.DecodeString(t.ScriptBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fecode script: %w", err)
-	}
-
-	_, addrs, _, err := txscript.ExtractPkScriptAddrs(scriptBytes, &chaincfg.MainNetParams)
+	_, addrs, _, err := txscript.ExtractPkScriptAddrs(t.ScriptBytes, &chaincfg.MainNetParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract addresses from the script: %w", err)
 	}
@@ -42,5 +37,3 @@ type UTXOEntry struct {
 	Vout   uint32
 	Output *TransactionOutput
 }
-
-type addressOutputs map[string][]*TransactionOutput

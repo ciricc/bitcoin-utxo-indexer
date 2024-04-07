@@ -2,6 +2,7 @@ package grpchandlers
 
 import (
 	"context"
+	"encoding/hex"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/ciricc/btc-utxo-indexer/pkg/api/grpc/UTXO"
@@ -60,7 +61,7 @@ func (u *UTXOGrpcHandlers) GetByAddress(
 		m = append(m, &UTXO.UnspentTransactionOutput{
 			TxId:         output.TxID,
 			Amount:       output.Output.Amount.String(),
-			ScriptPubKey: output.Output.ScriptBytes,
+			ScriptPubKey: hex.EncodeToString(output.Output.ScriptBytes),
 			Index:        int32(output.Vout),
 		})
 	}

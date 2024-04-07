@@ -2,6 +2,7 @@ package utxoservice
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -140,7 +141,11 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 
 		for _, tx := range block.GetTransactions() {
 
-			convertedOutputs := getTransactionsOutputsForStore(tx)
+			convertedOutputs, err := getTransactionsOutputsForStore(tx)
+			if err != nil {
+				return err
+			}
+
 			err = utxoStoreWithTx.AddTransactionOutputs(
 				ctx,
 				tx.GetID(),
@@ -205,7 +210,12 @@ func (s *Service[T]) getSpeningOutputs(
 	outputs := map[string][]*utxostore.TransactionOutput{}
 
 	for _, tx := range tx.GetTransactions() {
-		outputs[tx.GetID()] = getTransactionsOutputsForStore(tx)
+		convertedOutputs, err := getTransactionsOutputsForStore(tx)
+		if err != nil {
+			return nil, err
+		}
+
+		outputs[tx.GetID()] = convertedOutputs
 
 		for _, input := range tx.GetInputs() {
 			if input.SpendingOutput != nil {
@@ -290,17 +300,22 @@ func (s *Service[T]) spendOutputs(
 	return dereferencedAddresses, nil
 }
 
-func getTransactionsOutputsForStore(tx *blockchain.Transaction) []*utxostore.TransactionOutput {
+func getTransactionsOutputsForStore(tx *blockchain.Transaction) ([]*utxostore.TransactionOutput, error) {
 	outputs := tx.GetOutputs()
 	if len(outputs) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	convertedOutputs := make([]*utxostore.TransactionOutput, len(outputs))
 	for i, output := range outputs {
 		if output.IsSpendable() {
+			scriptBytes, err := hex.DecodeString(output.GetScriptPubKey().HEX)
+			if err != nil {
+				return nil, fmt.Errorf("failed to convert script to bytes: %w", err)
+			}
+
 			convertedOutputs[i] = &utxostore.TransactionOutput{
-				ScriptBytes: output.ScriptPubKey.HEX,
+				ScriptBytes: scriptBytes,
 				Amount:      output.Value.BigFloat,
 			}
 		} else {
@@ -309,7 +324,7 @@ func getTransactionsOutputsForStore(tx *blockchain.Transaction) []*utxostore.Tra
 		}
 	}
 
-	return convertedOutputs
+	return convertedOutputs, nil
 }
 
 func getOutputAdresses(output *blockchain.TransactionOutput) []string {
