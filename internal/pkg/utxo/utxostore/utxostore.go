@@ -233,14 +233,25 @@ func (u *Store) spendOutput(
 		if output != nil {
 			allSpent = false
 			// unspent outputs
-			for _, address := range output.Addresses {
+			addrs, err := output.GetAddresses()
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to get output addresses: %w", err)
+			}
+
+			for _, address := range addrs {
 				unspentTxOutputAddresses[address] = struct{}{}
 			}
 		}
 	}
 
 	dereferencedAddressed := []string{}
-	for _, address := range spentOutput.Addresses {
+
+	spentOutputAddrs, err := spentOutput.GetAddresses()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get output addresses: %w", err)
+	}
+
+	for _, address := range spentOutputAddrs {
 		if _, ok := unspentTxOutputAddresses[address]; !ok {
 			// force to delete tx id lin for this address
 			// because not referencing anymore
@@ -314,7 +325,12 @@ func (u *Store) createAddressUTXOTxIdIndex(txID string, outputs []*TransactionOu
 			continue
 		}
 
-		for _, address := range output.Addresses {
+		addrs, err := output.GetAddresses()
+		if err != nil {
+			return fmt.Errorf("failed to get output addresses: %w", err)
+		}
+
+		for _, address := range addrs {
 			txIDsByAdddress[address] = append(txIDsByAdddress[address], txID)
 		}
 	}

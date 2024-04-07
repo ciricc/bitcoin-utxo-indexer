@@ -182,7 +182,6 @@ func convertUTXOlistToTransactionOutputList(bitcoinConfig BitcoinConfig, utxos [
 		outputs = append(outputs, &utxostore.TransactionOutput{
 			ScriptBytes: hex.EncodeToString(utxo.GetCoin().GetOut().PkScript),
 			Amount:      *bigjson.NewBigFloat(*amountBigF64),
-			Addresses:   addresses,
 		})
 	}
 

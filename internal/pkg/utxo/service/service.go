@@ -255,8 +255,10 @@ func (s *Service[T]) spendOutputs(
 				return nil, utxostore.ErrAlreadySpent
 			}
 
-			spendingOutputAddresses := make([]string, len(spendingOutputs[vout].Addresses))
-			copy(spendingOutputAddresses, spendingOutputs[vout].Addresses)
+			spendingOutputAddresses, err := spendingOutputs[vout].GetAddresses()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get output addresses: %w", err)
+			}
 
 			unspentAddresses := map[string]bool{}
 
@@ -267,7 +269,12 @@ func (s *Service[T]) spendOutputs(
 					continue
 				}
 
-				for _, address := range output.Addresses {
+				addrs, err := output.GetAddresses()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get output addresses: %w", err)
+				}
+
+				for _, address := range addrs {
 					unspentAddresses[address] = true
 				}
 			}
@@ -294,7 +301,6 @@ func getTransactionsOutputsForStore(tx *blockchain.Transaction) []*utxostore.Tra
 		if output.IsSpendable() {
 			convertedOutputs[i] = &utxostore.TransactionOutput{
 				ScriptBytes: output.ScriptPubKey.HEX,
-				Addresses:   getOutputAdresses(output),
 				Amount:      output.Value.BigFloat,
 			}
 		} else {
