@@ -12,12 +12,20 @@ type Store struct {
 	s keyvaluestore.Store
 
 	addressUTXOIds *redisAddressUTXOIdx
+
+	// dbVer storing the version of the database (prefix for all keys)
+	dbVer string
 }
 
-func New(storer keyvaluestore.Store, setsStore sets.Sets) (*Store, error) {
+func New(
+	databaseVersion string,
+	storer keyvaluestore.Store,
+	setsStore sets.Sets,
+) (*Store, error) {
 	store := &Store{
 		s:              storer,
-		addressUTXOIds: newAddressUTXOIndex(setsStore),
+		addressUTXOIds: newAddressUTXOIndex(databaseVersion, setsStore),
+		dbVer:          databaseVersion,
 	}
 
 	return store, nil
@@ -26,12 +34,20 @@ func New(storer keyvaluestore.Store, setsStore sets.Sets) (*Store, error) {
 func (u *Store) WithStorer(storer keyvaluestore.Store, sets sets.Sets) *Store {
 	return &Store{
 		s:              storer,
-		addressUTXOIds: newAddressUTXOIndex(sets),
+		addressUTXOIds: newAddressUTXOIndex(u.dbVer, sets),
 	}
 }
 
+func (u *Store) Flush(ctx context.Context) error {
+	if err := u.s.DeleteByPattern(ctx, u.dbVer+":*"); err != nil {
+		return fmt.Errorf("flush error: %w", err)
+	}
+
+	return nil
+}
+
 func (u *Store) GetBlockHeight(_ context.Context) (int64, error) {
-	blockHeightKey := newBlockHeightKey()
+	blockHeightKey := newBlockHeightKey(u.dbVer)
 
 	var currentBlockHeight int64
 
@@ -44,20 +60,24 @@ func (u *Store) GetBlockHeight(_ context.Context) (int64, error) {
 }
 
 func (u *Store) GetBlockHash(_ context.Context) (string, error) {
-	blockHashKey := newBlockHashKey()
+	blockHashKey := newBlockHashKey(u.dbVer)
 
 	var currentBlockHash string
 
-	_, err := u.s.Get(blockHashKey.String(), &currentBlockHash)
+	found, err := u.s.Get(blockHashKey.String(), &currentBlockHash)
 	if err != nil {
 		return "", fmt.Errorf("failed to get current block hash: %w", err)
+	}
+
+	if !found {
+		return "", ErrBlockHashNotFound
 	}
 
 	return currentBlockHash, nil
 }
 
 func (u *Store) SetBlockHeight(_ context.Context, blockHeight int64) error {
-	blockHeightKey := newBlockHeightKey()
+	blockHeightKey := newBlockHeightKey(u.dbVer)
 
 	err := u.s.Set(blockHeightKey.String(), blockHeight)
 	if err != nil {
@@ -68,7 +88,7 @@ func (u *Store) SetBlockHeight(_ context.Context, blockHeight int64) error {
 }
 
 func (u *Store) SetBlockHash(_ context.Context, blockHash string) error {
-	blockHashKey := newBlockHashKey()
+	blockHashKey := newBlockHashKey(u.dbVer)
 
 	err := u.s.Set(blockHashKey.String(), blockHash)
 	if err != nil {
@@ -101,7 +121,7 @@ func (u *Store) GetUnspentOutputsByAddress(_ context.Context, address string) ([
 	for _, txID := range txIDsWithOutputs {
 		var outputs []*TransactionOutput
 
-		found, err := u.s.Get(newTransactionIDKey(txID, true).String(), &outputs)
+		found, err := u.s.Get(newTransactionIDKey(u.dbVer, txID, true).String(), &outputs)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get outputs: %w", err)
 		}
@@ -126,7 +146,7 @@ func (u *Store) GetOutputsByTxID(
 ) ([]*TransactionOutput, error) {
 	var outputs []*TransactionOutput
 
-	ok, err := u.s.Get(newTransactionIDKey(txID, true).String(), &outputs)
+	ok, err := u.s.Get(newTransactionIDKey(u.dbVer, txID, true).String(), &outputs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get outputs: %w", err)
 	}
@@ -152,7 +172,7 @@ func (u *Store) SpendAllOutputs(
 	_ context.Context,
 	txID string,
 ) error {
-	var txOutputsKey = newTransactionIDKey(txID, true)
+	var txOutputsKey = newTransactionIDKey(u.dbVer, txID, true)
 	if err := u.s.Delete(txOutputsKey.String()); err != nil {
 		return fmt.Errorf("delete outputs error: %w", err)
 	}
@@ -166,7 +186,7 @@ func (u *Store) SpendOutput(
 	idx int,
 ) ([]string, *TransactionOutput, error) {
 	var outputs []*TransactionOutput
-	var txOutputsKey = newTransactionIDKey(txID, true)
+	var txOutputsKey = newTransactionIDKey(u.dbVer, txID, true)
 
 	found, err := u.s.Get(txOutputsKey.String(), &outputs)
 	if err != nil {
@@ -185,7 +205,7 @@ func (u *Store) spendOutput(
 	idx int,
 	outputs []*TransactionOutput,
 ) ([]string, *TransactionOutput, error) {
-	var txOutputsKey = newTransactionIDKey(txID, true)
+	var txOutputsKey = newTransactionIDKey(u.dbVer, txID, true)
 
 	if idx < 0 || idx >= len(outputs) {
 		return nil, nil, ErrNotFound
@@ -271,7 +291,7 @@ func (u *Store) AddTransactionOutputs(
 }
 
 func (u *Store) setNewTxOutputs(txID string, outputs []*TransactionOutput) error {
-	txOutputsKey := newTransactionIDKey(txID, true)
+	txOutputsKey := newTransactionIDKey(u.dbVer, txID, true)
 
 	err := u.s.Set(txOutputsKey.String(), outputs)
 	if err != nil {

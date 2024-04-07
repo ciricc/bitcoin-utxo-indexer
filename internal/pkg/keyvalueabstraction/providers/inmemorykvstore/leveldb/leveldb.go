@@ -1,6 +1,7 @@
 package leveldbkvstore
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -119,6 +120,16 @@ func (l *LevelDBStore) ListKeys(match string, si func(key string, getValue func(
 	}
 
 	return nil
+}
+
+func (l *LevelDBStore) DeleteByPattern(_ context.Context, pattern string) error {
+	return fmt.Errorf("unimplemented")
+}
+
+func (l *LevelDBStore) Flush(_ context.Context) error {
+	return l.ListKeys("", func(key string, getValue func(v interface{}) error) (ok bool, err error) {
+		return false, l.db.Delete([]byte(key), nil)
+	})
 }
 
 var _ keyvaluestore.StoreWithTxManager[*leveldb.Transaction] = (*LevelDBStore)(nil)

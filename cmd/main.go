@@ -2,149 +2,142 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/ciricc/btc-utxo-indexer/config"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/app"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoinconfig"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/chainstate"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/scanner"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/state"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/chainstatemigration"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/di"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/migrationmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/restclient"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
-	"github.com/syndtr/goleveldb/leveldb"
 	"google.golang.org/grpc"
 )
 
 func main() {
+	mainContainer := do.New()
+	app.ProvideCommonDeps(mainContainer)
 
-	i := do.New()
-
-	do.Provide(i, di.NewConfig)
-	do.Provide(i, di.NewLogger)
-	do.Provide(i, di.NewShutdowner)
-
-	do.Provide(i, di.NewBitcoinBlocksIterator)
-	do.Provide(i, di.NewBlockchainScanner)
-	do.Provide(i, di.NewRedisSets)
-
-	do.Provide(i, di.GetUTXOStoreConstructor[redis.Pipeliner]())
-
-	do.Provide(i, di.NewUTXORedisStore)
-	do.Provide(i, di.NewUTXORedis)
-	do.Provide(i, di.NewRedisTxManager)
-
-	do.Provide(i, di.NewGRPCServer)
-
-	do.Provide(i, di.GetUTXOServiceConstructor[redis.Pipeliner]())
-	do.Provide(i, di.GeUTXOGRPCHandlersConstructor[redis.Pipeliner]())
-	do.Provide(i, di.GetScannerStateConstructor[redis.Pipeliner]())
-	do.Provide(i, di.NewUniversalBitcoinRESTClient)
-
-	chainStateLdb, err := leveldb.OpenFile("/home/ciricc/.bitcoin/chainstate", nil)
+	logger, err := do.Invoke[*zerolog.Logger](mainContainer)
 	if err != nil {
 		panic(err)
 	}
 
-	chaindtateDB, err := chainstate.NewDB(chainStateLdb)
-	if err != nil {
-		panic(err)
-	}
-
-	blockHash, err := chaindtateDB.GetBlockHash(context.Background())
-	if err != nil {
-		panic(err)
-	}
-
-	log.Println("blockHash", hex.EncodeToString(blockHash))
-	return
-
-	utxoIterator := chaindtateDB.NewUTXOIterator()
-
-	for {
-		xOut, ok, err := utxoIterator.Next(context.Background())
-		if err != nil {
-			panic(err)
-		}
-
-		if !ok {
-			continue
-		}
-
-		disassembled, err := txscript.ParsePkScript(xOut.GetCoin().GetOut().PkScript)
-		if err != nil {
-			panic(err)
-		}
-
-		addr, _ := disassembled.Address(&chaincfg.MainNetParams)
-		if addr != nil {
-			log.Println("address", addr.EncodeAddress())
-		}
-
-		log.Println("xout", xOut.GetTxID(), xOut.Index(), xOut.GetCoin().BlockHeight())
-	}
-
-	return
-
-	logger, err := do.Invoke[*zerolog.Logger](i)
-	if err != nil {
-		panic(err)
-	}
+	// if err := migrateFromChainstate(); err != nil {
+	// 	logger.Fatal().Err(err).Msg("failed to migrate from chainstate")
+	// }
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cfg, err := do.Invoke[*config.Config](i)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to invoke configuration")
+	utxoContainer := do.New()
+
+	app.ProvideCommonDeps(utxoContainer)
+	app.ProvideRedisDeps(utxoContainer)
+	app.ProvideUTXOStoreDeps(utxoContainer)
+	app.ProvideUTXOServiceDeps(utxoContainer)
+
+	if err := runUTXOGRPCServer(ctx, mainContainer, utxoContainer); err != nil {
+		logger.Fatal().Err(err).Msg("failed to run UTXO grpc server")
 	}
 
-	scanner, err := do.Invoke[*scanner.Scanner[*blockchain.Block]](i)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to create scanner")
-	}
+	scannerContainer := do.New()
 
-	utxStoreService, err := do.Invoke[*utxoservice.Service[redis.Pipeliner]](i)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to create utxo store service")
-	}
+	app.ProvideCommonDeps(scannerContainer)
+	app.ProvideRedisDeps(scannerContainer)
+	app.ProvideBitcoinCoreDeps(scannerContainer)
+	app.ProvideScannerDeps(scannerContainer)
+	app.ProvideUTXOStoreDeps(scannerContainer)
 
-	scannerState, err := do.Invoke[*state.KeyValueScannerState](i)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to invoke scanner's state")
-	}
-
-	grpcServer, err := do.Invoke[*grpc.Server](i)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to invoke grpc server")
+	if err := runUTXOScanner(ctx, mainContainer, utxoContainer, scannerContainer); err != nil {
+		logger.Fatal().Err(err).Msg("failed to run UTXO scanner")
 	}
 
 	go func() {
 		<-ctx.Done()
-		grpcServer.Stop()
-	}()
 
-	go func() {
-		ln, err := net.Listen("tcp", cfg.UTXO.Service.GRPC.Address)
-		if err != nil {
-			logger.Fatal().Err(err).Msg("failed to listen grpc server")
+		if err := scannerContainer.Shutdown(); err != nil {
+			logger.Fatal().Err(err).Msg("failed to shutdown the scanner container")
 		}
 
-		logger.Info().Str("address", cfg.UTXO.Service.GRPC.Address).Msg("UTXO grpc server started")
-
-		if err := grpcServer.Serve(ln); err != nil {
-			logger.Fatal().Err(err).Msg("failed to start grpc server")
+		if err := mainContainer.Shutdown(); err != nil {
+			logger.Fatal().Err(err).Msg("failed to shutdown the main container")
 		}
+
+		if err := utxoContainer.Shutdown(); err != nil {
+			logger.Fatal().Err(err).Msg("failed to shutdown the utxo service container")
+		}
+
+		os.Exit(0)
 	}()
+
+	if err := mainContainer.ShutdownOnSIGTERM(); err != nil {
+		logger.Fatal().Err(err).Msg("failed to shutdown the service")
+	}
+}
+
+func migrateFromChainstate() error {
+	chainstateContainer := do.New()
+
+	app.ProvideCommonDeps(chainstateContainer)
+	app.ProvideUTXOStoreDeps(chainstateContainer)
+	app.ProvideRedisDeps(chainstateContainer)
+	app.ProvideChainstateDeps(chainstateContainer)
+	app.ProvideBitcoinCoreDeps(chainstateContainer)
+
+	if err := runChainstateMigration(chainstateContainer); err != nil {
+		return fmt.Errorf("failed to run migration: %w", err)
+	}
+
+	if err := deleteOldVersionsData(); err != nil {
+		return fmt.Errorf("failed to delete old versions data: %w", err)
+	}
+
+	return nil
+}
+
+func runUTXOScanner(
+	ctx context.Context,
+	mainContainer *do.Injector,
+	utxoContainer *do.Injector,
+	scannerContainer *do.Injector,
+) error {
+	logger, err := do.Invoke[*zerolog.Logger](mainContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke logger: %w", err)
+	}
+
+	cfg, err := do.Invoke[*config.Config](mainContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke configuration: %w", err)
+	}
+
+	utxoStoreService, err := do.Invoke[*utxoservice.Service[redis.Pipeliner]](utxoContainer)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to create utxo store service")
+	}
+
+	scanner, err := do.Invoke[*scanner.Scanner[*blockchain.Block]](scannerContainer)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to create scanner")
+	}
+
+	scannerState, err := do.Invoke[*state.InMemoryState](scannerContainer)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to invoke scanner's state")
+	}
 
 	if cfg.Scanner.Enabled {
 		logger.Info().Msg("scanner started")
@@ -153,7 +146,7 @@ func main() {
 			if err := scanner.Start(ctx, func(ctx context.Context, block *blockchain.Block) error {
 				logger.Info().Str("hash", block.GetHash().String()).Msg("got new block")
 
-				if err := utxStoreService.AddFromBlock(ctx, block); err != nil {
+				if err := utxoStoreService.AddFromBlock(ctx, block); err != nil {
 					if !errors.Is(err, utxoservice.ErrBlockAlreadyStored) {
 						logger.Err(err).Str("hash", block.GetHash().String()).Msg("failed to store UTXO from block")
 
@@ -177,17 +170,162 @@ func main() {
 		logger.Warn().Msg("scanner is disabled")
 	}
 
+	return nil
+}
+
+func runUTXOGRPCServer(ctx context.Context, mainContainer *do.Injector, utxoContainer *do.Injector) error {
+	logger, err := do.Invoke[*zerolog.Logger](mainContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke logger: %w", err)
+	}
+
+	cfg, err := do.Invoke[*config.Config](mainContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke configuration: %w", err)
+	}
+
+	grpcServer, err := do.Invoke[*grpc.Server](utxoContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke grpc server: %w", err)
+	}
+
 	go func() {
 		<-ctx.Done()
-
-		if err := i.Shutdown(); err != nil {
-			logger.Fatal().Err(err).Msg("failed to shutdown the system")
-		}
-
-		os.Exit(0)
+		grpcServer.Stop()
 	}()
 
-	if err := i.ShutdownOnSIGTERM(); err != nil {
-		logger.Fatal().Err(err).Msg("failed to shutdown the service")
+	go func() {
+		ln, err := net.Listen("tcp", cfg.UTXO.Service.GRPC.Address)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("failed to listen grpc server")
+		}
+
+		logger.Info().Str("address", cfg.UTXO.Service.GRPC.Address).Msg("UTXO grpc server started")
+
+		if err := grpcServer.Serve(ln); err != nil {
+			logger.Fatal().Err(err).Msg("failed to start grpc server")
+		}
+	}()
+
+	return nil
+}
+
+func deleteOldVersionsData() error {
+	i := do.New()
+
+	app.ProvideCommonDeps(i)
+	app.ProvideUTXOStoreDeps(i)
+	app.ProvideRedisDeps(i)
+
+	logger, err := do.Invoke[*zerolog.Logger](i)
+	if err != nil {
+		return fmt.Errorf("failed to invoke logger: %w", err)
 	}
+
+	logger.Info().Msg("deleting old versions data")
+
+	migrationManager, err := do.Invoke[*migrationmanager.Manager](i)
+	if err != nil {
+		return fmt.Errorf("failed to invoke migration manager: %w", err)
+	}
+
+	for {
+		currentVersions, err := migrationManager.GetVersions(context.Background())
+		if err != nil {
+			return fmt.Errorf("failed to get versions: %w", err)
+		}
+
+		if len(currentVersions) <= 1 {
+			logger.Debug().Msg("no more versions to delete")
+
+			break
+		}
+
+		do.Override(i, di.GetUTXOStoreConstructor[redis.Pipeliner]())
+
+		utxoStore, err := do.Invoke[*utxostore.Store](i)
+		if err != nil {
+			return fmt.Errorf("failed to invoke UTXO store: %w", err)
+		}
+
+		err = utxoStore.Flush(context.Background())
+		if err != nil {
+			return fmt.Errorf("failed to flush UTXO store: %w", err)
+		}
+
+		logger.Info().Int64("version", currentVersions[0]).Msg("deleting version")
+		err = migrationManager.DeleteVersion(context.Background(), currentVersions[0])
+		if err != nil {
+			return fmt.Errorf("failed to delete version: %w", err)
+		}
+
+	}
+
+	return nil
+}
+
+func runChainstateMigration(newAppContainer *do.Injector) error {
+	migrationManager, err := do.Invoke[*migrationmanager.Manager](newAppContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke migration manager: %w", err)
+	}
+
+	if err := migrationManager.SetMigrationID(1); err != nil {
+		return fmt.Errorf("failed to set migration id: %w", err)
+	}
+
+	chainstateDB, err := do.Invoke[*chainstate.DB](newAppContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke chainstate db: %w", err)
+	}
+
+	utxoStore, err := do.Invoke[*utxostore.Store](newAppContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke UTXO store: %w", err)
+	}
+
+	bitcoinConfig, err := do.Invoke[*bitcoinconfig.BitcoinConfig](newAppContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke bitcoin config: %w", err)
+	}
+
+	logger, err := do.Invoke[*zerolog.Logger](newAppContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke logger: %w", err)
+	}
+
+	restClient, err := do.Invoke[*restclient.RESTClient](newAppContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke rest client: %w", err)
+	}
+
+	chainstateBlockHash, err := chainstateDB.GetBlockHash(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to get chainstate block hash: %w", err)
+	}
+
+	blockInfo, err := restClient.GetBlockHeader(context.Background(), chainstateBlockHash)
+	if err != nil {
+		return fmt.Errorf("failed to get block info: %w", err)
+	}
+
+	migration := chainstatemigration.NewMigrator(
+		logger,
+		chainstateDB,
+		utxoStore,
+		bitcoinConfig,
+		blockInfo.Height,
+	)
+
+	err = migration.Migrate(context.Background())
+	if err != nil {
+		return fmt.Errorf("migrate error: %w", err)
+	}
+
+	_, err = migrationManager.UpdateVersion(context.Background())
+	if err != nil {
+		return fmt.Errorf("update database version error: %w", err)
+	}
+
+	return nil
 }

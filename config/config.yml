@@ -2,6 +2,12 @@ name: "BitcoinUTXOIndexer"
 version: "0.0.0"
 environment: "dev"
 
+blockchainParams:
+  decimals: 8
+
+blockchainState:
+  path: '/home/ciricc/.bitcoin/chainstate'
+
 blockchainNode:
   # The URL of the Bitcoin Core node REST interface
   restURL: http://localhost:19001/rest
@@ -40,6 +46,7 @@ utxo:
 
     # Redis storage configration for the scanner state
     redis:
-      host: 195.2.78.229:6379
+      host: localhost:6379
+      db: 0
       # username: utxo
       # password: fEcONJORtFAr

@@ -1,20 +1,25 @@
 package di
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 
 	"github.com/IBM/sarama"
 	"github.com/ciricc/btc-utxo-indexer/config"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoinblocksiterator"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoinconfig"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/scanner"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/state"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/inmemorykvstore"
-	leveldbkvstore "github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/leveldb"
+	leveldbkvstore "github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/inmemorykvstore/leveldb"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/providers/rediskvstore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/logger"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/migrationmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/providers/redissets"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/shutdown"
@@ -43,7 +48,7 @@ func NewBlockchainScanner(i *do.Injector) (*scanner.Scanner[*blockchain.Block], 
 		return nil, fmt.Errorf("invoke bitcin blocs iterator error: %w", err)
 	}
 
-	state, err := do.Invoke[*state.KeyValueScannerState](i)
+	state, err := do.Invoke[*state.InMemoryState](i)
 	if err != nil {
 		return nil, fmt.Errorf("invoke state error: %w", err)
 	}
@@ -111,7 +116,7 @@ func NewUTXOLevelDB(i *do.Injector) (*leveldb.DB, error) {
 	return db, nil
 }
 
-func NewUTXORedisStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[redis.Pipeliner], error) {
+func NewRedisKeyValueStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[redis.Pipeliner], error) {
 	cfg, err := do.Invoke[*config.Config](i)
 	if err != nil {
 		return nil, fmt.Errorf("failed to invoke configuration: %w", err)
@@ -148,7 +153,7 @@ func NewInMemoryStore(i *do.Injector) (*inmemorykvstore.Store, error) {
 	return store, nil
 }
 
-func NewUTXOInMemoryStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[*inmemorykvstore.Store], error) {
+func NewKeyValueInMemoryStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[*inmemorykvstore.Store], error) {
 	store, err := do.Invoke[*inmemorykvstore.Store](i)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create leveldb store: %w", err)
@@ -183,7 +188,7 @@ func NewUTXOLevelDBStore(i *do.Injector) (keyvaluestore.StoreWithTxManager[*leve
 	return store, nil
 }
 
-func NewUTXORedis(i *do.Injector) (*redis.Client, error) {
+func NewRedisClient(i *do.Injector) (*redis.Client, error) {
 	cfg, err := do.Invoke[*config.Config](i)
 	if err != nil {
 		return nil, fmt.Errorf("invoke config error: %w", err)
@@ -193,25 +198,41 @@ func NewUTXORedis(i *do.Injector) (*redis.Client, error) {
 		Addr:     cfg.UTXO.Storage.Redis.Host,
 		Username: cfg.UTXO.Storage.Redis.Username,
 		Password: cfg.UTXO.Storage.Redis.Password,
+		DB:       cfg.UTXO.Storage.Redis.DB,
 	})
 
 	return client, nil
 }
 
-func NewScannerStateWithInMemoryStore(i *do.Injector) (*state.KeyValueScannerState, error) {
-	kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[*inmemorykvstore.Store]](i)
-	if err != nil {
-		return nil, fmt.Errorf("invoke key value store error: %w", err)
-	}
-
+func NewScannerStateWithInMemoryStore(i *do.Injector) (*state.InMemoryState, error) {
 	cfg, err := do.Invoke[*config.Config](i)
 	if err != nil {
 		return nil, fmt.Errorf("invoke config error: %w", err)
 	}
 
-	state := state.NewStateWithKeyValueStore(
-		cfg.Scanner.State.StartFromBlockHash,
-		kvStore,
+	logger, err := do.Invoke[*zerolog.Logger](i)
+	if err != nil {
+		return nil, fmt.Errorf("invoke logger error: %w", err)
+	}
+
+	utxoStore, err := do.Invoke[*utxostore.Store](i)
+	if err != nil {
+		return nil, fmt.Errorf("invoke UTXO store error: %w", err)
+	}
+
+	lastUTXOBlockHash, err := utxoStore.GetBlockHash(context.Background())
+	if err != nil && errors.Is(err, utxostore.ErrBlockHashNotFound) {
+		return nil, fmt.Errorf("failed to get last UTXO block hash: %w", err)
+	}
+
+	if lastUTXOBlockHash == "" {
+		lastUTXOBlockHash = cfg.Scanner.State.StartFromBlockHash
+	}
+
+	logger.Info().Str("lastUTXOBlockHash", lastUTXOBlockHash).Msg("got last UTXO block hash")
+
+	state := state.NewInMemoryState(
+		lastUTXOBlockHash,
 	)
 
 	return state, nil
@@ -281,7 +302,17 @@ func GetUTXOStoreConstructor[T any]() do.Provider[*utxostore.Store] {
 			return nil, fmt.Errorf("invoke sets error: %w", err)
 		}
 
-		store, err := utxostore.New(kvStore, sets)
+		migrationManager, err := do.Invoke[*migrationmanager.Manager](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke migration manager: %w", err)
+		}
+
+		databaseVersion, err := migrationManager.GetVersion(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get database version: %w", err)
+		}
+
+		store, err := utxostore.New(strconv.FormatInt(databaseVersion, 10), kvStore, sets)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create UTXO store: %w", err)
 		}
@@ -338,6 +369,25 @@ func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T]] {
 
 		return utxoStoreService, nil
 	}
+}
+
+func NewBitcoinConfig(i *do.Injector) (*bitcoinconfig.BitcoinConfig, error) {
+	restClient, err := do.Invoke[*restclient.RESTClient](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke rest client: %w", err)
+	}
+
+	cfg, err := do.Invoke[*config.Config](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke configuration: %w", err)
+	}
+
+	config, err := bitcoinconfig.New(restClient, cfg.BlockchainParams.Decimals)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create bitcoin config: %w", err)
+	}
+
+	return config, nil
 }
 
 func NewUniversalBitcoinRESTClient(i *do.Injector) (*restclient.RESTClient, error) {

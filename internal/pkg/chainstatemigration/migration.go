@@ -26,6 +26,7 @@ type UTXOStore interface {
 	AddTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
 	SetBlockHeight(ctx context.Context, blockHeight int64) error
 	SetBlockHash(ctx context.Context, blockHash string) error
+	Flush(ctx context.Context) error
 }
 
 type BitcoinConfig interface {
@@ -73,6 +74,12 @@ func NewMigrator(
 // Migrate migrates the UTXO from the chainstate database to the UTXO store.
 func (m *Migrator) Migrate(ctx context.Context) error {
 	m.logger.Info().Msg("migrating UTXOs from chainstate to UTXO store")
+
+	m.logger.Info().Msg("flushing current UTXO store")
+
+	if err := m.utxoStore.Flush(ctx); err != nil {
+		return fmt.Errorf("failed to flush store: %w", err)
+	}
 
 	utxoIterator := m.cdb.NewUTXOIterator()
 
@@ -142,7 +149,9 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 
 func convertUTXOlistToTransactionOutputList(bitcoinConfig BitcoinConfig, utxos []*utxo.TxOut) []*utxostore.TransactionOutput {
 	outputs := make([]*utxostore.TransactionOutput, 0, len(utxos))
-	decimals := decimal.NewFromInt(int64(bitcoinConfig.GetDecimals()))
+	decimalsInt := bitcoinConfig.GetDecimals()
+
+	decimals := decimal.New(1, int32(decimalsInt))
 
 	for _, utxo := range utxos {
 

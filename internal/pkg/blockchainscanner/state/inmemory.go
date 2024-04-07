@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	"fmt"
 )
 
 type InMemoryState struct {
@@ -22,5 +21,5 @@ func (s *InMemoryState) GetLastScannedBlockHash(context.Context) (string, error)
 func (s *InMemoryState) UpdateLastScannedBlockHash(_ context.Context, hash string) error {
 	s.lastScannedBlockHash = hash
 
-	return fmt.Errorf("something went wrong")
+	return nil
 }

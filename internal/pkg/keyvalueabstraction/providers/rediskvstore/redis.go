@@ -122,4 +122,18 @@ func (r *RedisStore) WithTx(tx txmanager.Transaction[redis.Pipeliner]) (keyvalue
 	}, nil
 }
 
+func (r *RedisStore) DeleteByPattern(ctx context.Context, pattern string) error {
+	return r.ListKeys(pattern, func(key string, getValue func(v interface{}) error) (ok bool, err error) {
+		return false, r.Delete(key)
+	})
+}
+
+func (r *RedisStore) Flush(ctx context.Context) error {
+	if err := r.redis.FlushAll(ctx).Err(); err != nil {
+		return fmt.Errorf("fialed to flush: %w", err)
+	}
+
+	return nil
+}
+
 var _ keyvaluestore.StoreWithTxManager[redis.Pipeliner] = (*RedisStore)(nil)

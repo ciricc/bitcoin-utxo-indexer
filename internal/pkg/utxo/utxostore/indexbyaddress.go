@@ -8,17 +8,19 @@ import (
 )
 
 type redisAddressUTXOIdx struct {
-	s sets.Sets
+	s     sets.Sets
+	dbVer string
 }
 
-func newAddressUTXOIndex(sets sets.Sets) *redisAddressUTXOIdx {
+func newAddressUTXOIndex(databaseVersion string, sets sets.Sets) *redisAddressUTXOIdx {
 	return &redisAddressUTXOIdx{
-		s: sets,
+		s:     sets,
+		dbVer: databaseVersion,
 	}
 }
 
 func (u *redisAddressUTXOIdx) deleteAdressUTXOTransactionIds(address string, txIDs []string) error {
-	addressUTXOTxIDsKey := newAddressUTXOTxIDsSetKey(address)
+	addressUTXOTxIDsKey := newAddressUTXOTxIDsSetKey(u.dbVer, address)
 
 	err := u.s.RemoveFromSet(context.Background(), addressUTXOTxIDsKey.String(), txIDs...)
 	if err != nil {
@@ -29,7 +31,7 @@ func (u *redisAddressUTXOIdx) deleteAdressUTXOTransactionIds(address string, txI
 }
 
 func (i *redisAddressUTXOIdx) getAddressUTXOTransactionIds(address string) ([]string, error) {
-	addressUTXOTxIDsKey := newAddressUTXOTxIDsSetKey(address)
+	addressUTXOTxIDsKey := newAddressUTXOTxIDsSetKey(i.dbVer, address)
 	txIds, err := i.s.GetSet(context.Background(), addressUTXOTxIDsKey.String())
 	if err != nil {
 		return nil, fmt.Errorf("get address UTXO tx ids set error: %w", err)
@@ -42,7 +44,7 @@ func (i *redisAddressUTXOIdx) addAddressUTXOTransactionIds(
 	address string,
 	txIDs []string,
 ) error {
-	err := i.s.AddToSet(context.Background(), newAddressUTXOTxIDsSetKey(address).String(), txIDs...)
+	err := i.s.AddToSet(context.Background(), newAddressUTXOTxIDsSetKey(i.dbVer, address).String(), txIDs...)
 	if err != nil {
 		return fmt.Errorf("failed to add address UTXO tx ids: %w", err)
 	}

@@ -1,6 +1,10 @@
 package keyvaluestore
 
-import "github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
+import (
+	"context"
+
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
+)
 
 type Store interface {
 	// Get retrieves the value for the given key.
@@ -14,6 +18,12 @@ type Store interface {
 
 	// ListKeys iterates over all keys in the store and calls the given function for each key.
 	ListKeys(match string, si func(key string, getValue func(v interface{}) error) (stop bool, err error)) error
+
+	// Flush deletes all keys
+	Flush(ctx context.Context) error
+
+	// DeleteByPattern deletes all keys matching pattern
+	DeleteByPattern(ctx context.Context, pattern string) error
 }
 
 type StoreWithTxManager[T any] interface {

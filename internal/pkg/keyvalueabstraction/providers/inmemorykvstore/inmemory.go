@@ -1,6 +1,7 @@
 package inmemorykvstore
 
 import (
+	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -234,6 +235,19 @@ func (i *Store) Set(key string, v any) error {
 	i.s[key] = value
 
 	return nil
+}
+
+func (i *Store) Flush(_ context.Context) error {
+	i.mx.Lock()
+	defer i.mx.Unlock()
+
+	i.s = map[string][]byte{}
+
+	return nil
+}
+
+func (i *Store) DeleteByPattern(_ context.Context, pattern string) error {
+	return fmt.Errorf("unimplemented")
 }
 
 var _ keyvaluestore.StoreWithTxManager[*Store] = (*Store)(nil)

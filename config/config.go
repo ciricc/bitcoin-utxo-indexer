@@ -13,6 +13,14 @@ type Config struct {
 	Version     string `yaml:"version"`
 	Environment string `yaml:"env"`
 
+	BlockchainState struct {
+		Path string `yaml:"path"`
+	} `yaml:"blockchainState"`
+
+	BlockchainParams struct {
+		Decimals int `yaml:"decimals"`
+	} `yaml:"blockchainParams"`
+
 	BlockchainNode struct {
 		RestURL string `yaml:"restURL"`
 	} `yaml:"blockchainNode"`
@@ -48,11 +56,13 @@ type Config struct {
 			LevelDB struct {
 				Path string `yaml:"path"`
 			} `yaml:"leveldb"`
+
 			Redis struct {
 				Host     string `yaml:"host"`
 				Username string `yaml:"username"`
 				Password string `yaml:"password"`
-			}
+				DB       int    `yaml:"db"`
+			} `yaml:"redis"`
 		} `yaml:"storage"`
 	} `yaml:"utxo"`
 }
