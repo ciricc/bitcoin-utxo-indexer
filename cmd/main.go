@@ -35,9 +35,9 @@ func main() {
 		panic(err)
 	}
 
-	// if err := migrateFromChainstate(); err != nil {
-	// 	logger.Fatal().Err(err).Msg("failed to migrate from chainstate")
-	// }
+	if err := migrateFromChainstate(); err != nil {
+		logger.Fatal().Err(err).Msg("failed to migrate from chainstate")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -264,37 +264,39 @@ func deleteOldVersionsData() error {
 	return nil
 }
 
-func runChainstateMigration(newAppContainer *do.Injector) error {
-	migrationManager, err := do.Invoke[*migrationmanager.Manager](newAppContainer)
+func runChainstateMigration(chainstateContainer *do.Injector) error {
+	oldUtxoStore, err := do.Invoke[*utxostore.Store](chainstateContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke UTXO store: %w", err)
+	}
+
+	migrationManager, err := do.Invoke[*migrationmanager.Manager](chainstateContainer)
 	if err != nil {
 		return fmt.Errorf("failed to invoke migration manager: %w", err)
 	}
+
+	do.Override(chainstateContainer, di.GetUTXOStoreConstructor[redis.Pipeliner]())
 
 	if err := migrationManager.SetMigrationID(1); err != nil {
 		return fmt.Errorf("failed to set migration id: %w", err)
 	}
 
-	chainstateDB, err := do.Invoke[*chainstate.DB](newAppContainer)
+	chainstateDB, err := do.Invoke[*chainstate.DB](chainstateContainer)
 	if err != nil {
 		return fmt.Errorf("failed to invoke chainstate db: %w", err)
 	}
 
-	utxoStore, err := do.Invoke[*utxostore.Store](newAppContainer)
-	if err != nil {
-		return fmt.Errorf("failed to invoke UTXO store: %w", err)
-	}
-
-	bitcoinConfig, err := do.Invoke[*bitcoinconfig.BitcoinConfig](newAppContainer)
+	bitcoinConfig, err := do.Invoke[*bitcoinconfig.BitcoinConfig](chainstateContainer)
 	if err != nil {
 		return fmt.Errorf("failed to invoke bitcoin config: %w", err)
 	}
 
-	logger, err := do.Invoke[*zerolog.Logger](newAppContainer)
+	logger, err := do.Invoke[*zerolog.Logger](chainstateContainer)
 	if err != nil {
 		return fmt.Errorf("failed to invoke logger: %w", err)
 	}
 
-	restClient, err := do.Invoke[*restclient.RESTClient](newAppContainer)
+	restClient, err := do.Invoke[*restclient.RESTClient](chainstateContainer)
 	if err != nil {
 		return fmt.Errorf("failed to invoke rest client: %w", err)
 	}
@@ -307,6 +309,22 @@ func runChainstateMigration(newAppContainer *do.Injector) error {
 	blockInfo, err := restClient.GetBlockHeader(context.Background(), chainstateBlockHash)
 	if err != nil {
 		return fmt.Errorf("failed to get block info: %w", err)
+	}
+
+	currentHeightFromUTXOStore, err := oldUtxoStore.GetBlockHeight(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to get current utxo store block height: %w", err)
+	}
+
+	if blockInfo.GetHeight() <= currentHeightFromUTXOStore {
+		logger.Info().Msg("the chainstate has older version of the utxo")
+
+		return nil
+	}
+
+	utxoStore, err := do.Invoke[*utxostore.Store](chainstateContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke UTXO store: %w", err)
 	}
 
 	migration := chainstatemigration.NewMigrator(
