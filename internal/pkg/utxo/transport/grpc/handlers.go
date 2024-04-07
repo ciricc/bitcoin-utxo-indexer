@@ -3,6 +3,7 @@ package grpchandlers
 import (
 	"context"
 
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/ciricc/btc-utxo-indexer/pkg/api/grpc/UTXO"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -10,7 +11,7 @@ import (
 
 type UTXOService interface {
 	// GetUTXOByAdress must return list of UTXO of the address
-	GetUTXOByAddress(ctx context.Context, address string) ([]bool, error)
+	GetUTXOByAddress(ctx context.Context, address string) ([]*utxostore.UTXOEntry, error)
 	GetBlockHeight(ctx context.Context) (int64, error)
 }
 
@@ -55,8 +56,13 @@ func (u *UTXOGrpcHandlers) GetByAddress(
 
 	m := make([]*UTXO.UnspentTransactionOutput, 0, len(outputs))
 
-	for range outputs {
-		m = append(m, &UTXO.UnspentTransactionOutput{})
+	for _, output := range outputs {
+		m = append(m, &UTXO.UnspentTransactionOutput{
+			TxId:         output.TxID,
+			Amount:       output.Output.Amount.String(),
+			ScriptPubKey: output.Output.ScriptBytes,
+			Index:        int32(output.Vout),
+		})
 	}
 
 	return &UTXO.GetByAddressResponse{

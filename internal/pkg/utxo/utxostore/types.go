@@ -10,4 +10,10 @@ type TransactionOutput struct {
 	Addresses   []string         `json:"2"`
 }
 
+type UTXOEntry struct {
+	TxID   string
+	Vout   uint32
+	Output *TransactionOutput
+}
+
 type addressOutputs map[string][]*TransactionOutput

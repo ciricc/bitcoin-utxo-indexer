@@ -18,7 +18,7 @@ type UTXOStore interface {
 	GetOutputsByTxID(_ context.Context, txID string) ([]*utxostore.TransactionOutput, error)
 	SpendOutput(_ context.Context, txID string, idx int) ([]string, *utxostore.TransactionOutput, error)
 	WithStorer(storer keyvaluestore.Store, sets sets.Sets) *utxostore.Store
-	GetUnspentOutputsByAddress(_ context.Context, address string) ([]*utxostore.TransactionOutput, error)
+	GetUnspentOutputsByAddress(_ context.Context, address string) ([]*utxostore.UTXOEntry, error)
 	GetBlockHeight(_ context.Context) (int64, error)
 	GetBlockHash(_ context.Context) (string, error)
 }
@@ -84,22 +84,13 @@ func (u *Service[T]) GetBlockHeight(ctx context.Context) (int64, error) {
 	return height, nil
 }
 
-func (u *Service[T]) GetUTXOByAddress(ctx context.Context, address string) ([]bool, error) {
+func (u *Service[T]) GetUTXOByAddress(ctx context.Context, address string) ([]*utxostore.UTXOEntry, error) {
 	outputs, err := u.s.GetUnspentOutputsByAddress(ctx, address)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get UTXO by address: %w", err)
 	}
 
-	if len(outputs) == 0 {
-		return nil, nil
-	}
-
-	b := make([]bool, 0, len(outputs))
-	for range outputs {
-		b = append(b, true)
-	}
-
-	return b, nil
+	return outputs, nil
 }
 
 func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) error {
@@ -300,10 +291,15 @@ func getTransactionsOutputsForStore(tx *blockchain.Transaction) []*utxostore.Tra
 
 	convertedOutputs := make([]*utxostore.TransactionOutput, len(outputs))
 	for i, output := range outputs {
-		convertedOutputs[i] = &utxostore.TransactionOutput{
-			ScriptBytes: output.ScriptPubKey.HEX,
-			Addresses:   getOutputAdresses(output),
-			Amount:      output.Value.BigFloat,
+		if output.IsSpendable() {
+			convertedOutputs[i] = &utxostore.TransactionOutput{
+				ScriptBytes: output.ScriptPubKey.HEX,
+				Addresses:   getOutputAdresses(output),
+				Amount:      output.Value.BigFloat,
+			}
+		} else {
+			// is unspendable output, so, we push it as already "spent"
+			convertedOutputs[i] = nil
 		}
 	}
 
@@ -316,7 +312,7 @@ func getOutputAdresses(output *blockchain.TransactionOutput) []string {
 	if len(output.ScriptPubKey.Addresses) != 0 {
 		addresses = make([]string, len(output.ScriptPubKey.Addresses))
 
-		copy(output.ScriptPubKey.Addresses, addresses)
+		copy(addresses, output.ScriptPubKey.Addresses)
 	} else if output.ScriptPubKey.Address != "" {
 		addresses = make([]string, 1)
 		addresses[0] = output.ScriptPubKey.Address

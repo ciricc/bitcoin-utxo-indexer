@@ -24,5 +24,10 @@ message GetByAddressResponse {
 	repeated UnspentTransactionOutput unspent_outputs = 1;
 }
 
-message UnspentTransactionOutput {}
+message UnspentTransactionOutput {
+	int32 index = 1;
+	string tx_id = 2;
+	string amount = 3;
+	string script_pub_key = 4;
+}
 

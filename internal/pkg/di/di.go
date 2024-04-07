@@ -205,11 +205,6 @@ func NewRedisClient(i *do.Injector) (*redis.Client, error) {
 }
 
 func NewScannerStateWithInMemoryStore(i *do.Injector) (*state.InMemoryState, error) {
-	cfg, err := do.Invoke[*config.Config](i)
-	if err != nil {
-		return nil, fmt.Errorf("invoke config error: %w", err)
-	}
-
 	logger, err := do.Invoke[*zerolog.Logger](i)
 	if err != nil {
 		return nil, fmt.Errorf("invoke logger error: %w", err)
@@ -221,12 +216,22 @@ func NewScannerStateWithInMemoryStore(i *do.Injector) (*state.InMemoryState, err
 	}
 
 	lastUTXOBlockHash, err := utxoStore.GetBlockHash(context.Background())
-	if err != nil && errors.Is(err, utxostore.ErrBlockHashNotFound) {
+	if err != nil && !errors.Is(err, utxostore.ErrBlockHashNotFound) {
 		return nil, fmt.Errorf("failed to get last UTXO block hash: %w", err)
 	}
 
+	restClient, err := do.Invoke[*restclient.RESTClient](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke rest client: %w", err)
+	}
+
+	genesisBlockHash, err := restClient.GetBlockHash(context.Background(), 0)
+	if err != nil {
+		return nil, fmt.Errorf("faield to get genesis block hash: %w", err)
+	}
+
 	if lastUTXOBlockHash == "" {
-		lastUTXOBlockHash = cfg.Scanner.State.StartFromBlockHash
+		lastUTXOBlockHash = genesisBlockHash.String()
 	}
 
 	logger.Info().Str("lastUTXOBlockHash", lastUTXOBlockHash).Msg("got last UTXO block hash")
@@ -245,13 +250,18 @@ func GetScannerStateConstructor[T any]() do.Provider[*state.KeyValueScannerState
 			return nil, fmt.Errorf("invoke key value store error: %w", err)
 		}
 
-		cfg, err := do.Invoke[*config.Config](i)
+		restClient, err := do.Invoke[*restclient.RESTClient](i)
 		if err != nil {
-			return nil, fmt.Errorf("invoke config error: %w", err)
+			return nil, fmt.Errorf("failed to invoke rest client: %w", err)
+		}
+
+		genesisBlockHash, err := restClient.GetBlockHash(context.Background(), 0)
+		if err != nil {
+			return nil, fmt.Errorf("faield to get genesis block hash: %w", err)
 		}
 
 		state := state.NewStateWithKeyValueStore(
-			cfg.Scanner.State.StartFromBlockHash,
+			genesisBlockHash.String(),
 			kvStore,
 		)
 

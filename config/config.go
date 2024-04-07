@@ -32,9 +32,6 @@ type Config struct {
 
 	Scanner struct {
 		Enabled bool `yaml:"enabled"`
-		State   struct {
-			StartFromBlockHash string `yaml:"startFromBlockHash"`
-		} `yaml:"state"`
 	}
 
 	UTXO struct {
@@ -103,13 +100,6 @@ func (c Config) Validate() error {
 		validation.Field(&c.BlockchainBlocksIterator.ConcurrentBlocksDownloadLimit, validation.Required, validation.Min(1)),
 	); err != nil {
 		return fmt.Errorf("failed to validate blockchainBlocksIterator options: %w", err)
-	}
-
-	if err := validation.ValidateStruct(
-		&c.Scanner.State,
-		validation.Field(&c.Scanner.State.StartFromBlockHash, validation.Required, is.Hexadecimal),
-	); err != nil {
-		return fmt.Errorf("failed to validate scanner state options: %w", err)
 	}
 
 	if err := validation.ValidateStruct(

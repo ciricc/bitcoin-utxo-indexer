@@ -1,6 +1,7 @@
 package di
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ciricc/btc-utxo-indexer/config"
@@ -50,6 +51,10 @@ func NewUTXOStoreMigrationManager(i *do.Injector) (*migrationmanager.Manager, er
 	manager, err := migrationmanager.NewManager("utxo_store", redisSets)
 	if err != nil {
 		return nil, fmt.Errorf("failed to invoke migration manager: %w", err)
+	}
+
+	if err := manager.Initialize(context.Background()); err != nil {
+		return nil, fmt.Errorf("failed to initialize migration amanger")
 	}
 
 	return manager, nil

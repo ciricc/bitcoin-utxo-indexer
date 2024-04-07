@@ -64,6 +64,28 @@ func (r *RESTClient) GetBlockchainInfo(ctx context.Context) (*blockchain.Blockch
 	return &info, nil
 }
 
+func (r *RESTClient) GetBlockHash(
+	ctx context.Context,
+	height int64,
+) (*blockchain.Hash, error) {
+	var hash GetBlockHashByHeightResponse
+
+	res, err := r.callRest(ctx, buildJsonMethodPath("blockhashbyheight", fmt.Sprintf("%d", height)), &hash)
+	if err != nil && res == nil {
+		return nil, fmt.Errorf("failed to get block header: %w", err)
+	}
+
+	if res.StatusCode == http.StatusNotFound {
+		return nil, ErrBlockNotFound
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return nil, newBadStatusCodeError(res.StatusCode)
+	}
+
+	return &hash.BlockHash, nil
+}
+
 func (r *RESTClient) GetBlockHeader(
 	ctx context.Context,
 	hash blockchain.Hash,

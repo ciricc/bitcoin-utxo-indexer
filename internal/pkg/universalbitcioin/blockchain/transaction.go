@@ -1,6 +1,11 @@
 package blockchain
 
-import "github.com/ciricc/btc-utxo-indexer/internal/pkg/bigjson"
+import (
+	"encoding/hex"
+
+	"github.com/btcsuite/btcd/txscript"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bigjson"
+)
 
 type AmountValue struct {
 	bigjson.BigFloat
@@ -101,6 +106,27 @@ func (t *TransactionOutput) GetValue() *AmountValue {
 
 func (t *TransactionOutput) GetScriptPubKey() *ScriptPubKey {
 	return t.ScriptPubKey
+}
+
+func (t *TransactionOutput) IsSpendable() bool {
+	if t.ScriptPubKey == nil {
+		return false
+	}
+
+	if t.ScriptPubKey.Type == "nulldata" {
+		return false
+	}
+
+	if len(t.ScriptPubKey.HEX) == 0 {
+		return false
+	}
+
+	scriptBytes, err := hex.DecodeString(t.ScriptPubKey.HEX)
+	if err != nil {
+		return false
+	}
+
+	return !txscript.IsUnspendable(scriptBytes)
 }
 
 type PrevOut struct {

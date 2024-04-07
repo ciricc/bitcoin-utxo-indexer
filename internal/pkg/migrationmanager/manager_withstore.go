@@ -8,6 +8,8 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
 )
 
+const DefaultVersion = 1
+
 type Counters interface {
 	GetCounter(ctx context.Context, name string) (int64, error)
 	IncrCounterBy(ctx context.Context, name string, add int64) (int64, error)
@@ -57,6 +59,24 @@ func (m *Manager) DeleteVersion(ctx context.Context, ver int64) error {
 	return nil
 }
 
+func (m *Manager) Initialize(ctx context.Context) error {
+	versions, err := m.GetVersions(ctx)
+	if err != nil {
+		return err
+	}
+
+	if len(versions) > 0 {
+		return nil
+	}
+
+	err = m.c.AddToSet(ctx, m.versionCounterName, strconv.FormatInt(DefaultVersion, 10))
+	if err != nil {
+		return fmt.Errorf("failed to increment version: %w", err)
+	}
+
+	return nil
+}
+
 func (m *Manager) GetVersions(ctx context.Context) ([]int64, error) {
 	currentVersions, err := m.c.GetSet(ctx, m.versionCounterName)
 	if err != nil {
@@ -82,7 +102,7 @@ func (m *Manager) getOldestVersion(ctx context.Context) (int64, error) {
 	}
 
 	if len(currentVersions) == 0 {
-		return 0, nil
+		return 0, ErrMigrationNotInited
 	}
 
 	return currentVersions[0], nil

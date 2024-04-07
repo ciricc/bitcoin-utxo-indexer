@@ -52,14 +52,6 @@ func newAddressUTXOTxIDsSetKey(ver string, address string) *storageKey {
 	}
 }
 
-func newAddressUTXOTxIDsKey(ver string, address string, txID string) *storageKey {
-	return &storageKey{
-		dbVer:  ver,
-		prefix: addressKeyType,
-		key:    fmt.Sprintf("%s:o:%s", address, txID),
-	}
-}
-
 func newTransactionIDKey(ver, txID string, isOutputs bool) *storageKey {
 	suffix := "outputs"
 	if !isOutputs {
@@ -75,7 +67,7 @@ func newTransactionIDKey(ver, txID string, isOutputs bool) *storageKey {
 
 func StorageKeyFromString(s string) (*storageKey, error) {
 	keyColumns := strings.SplitN(s, ":", 3)
-	if len(keyColumns) < 2 {
+	if len(keyColumns) < 3 {
 		return nil, ErrInvalidStorageKeyFormat
 	}
 

@@ -35,6 +35,7 @@ func (u *Store) WithStorer(storer keyvaluestore.Store, sets sets.Sets) *Store {
 	return &Store{
 		s:              storer,
 		addressUTXOIds: newAddressUTXOIndex(u.dbVer, sets),
+		dbVer:          u.dbVer,
 	}
 }
 
@@ -106,7 +107,7 @@ func (u *Store) RemoveAddressTxIDs(_ context.Context, address string, txIDs []st
 	return nil
 }
 
-func (u *Store) GetUnspentOutputsByAddress(_ context.Context, address string) ([]*TransactionOutput, error) {
+func (u *Store) GetUnspentOutputsByAddress(_ context.Context, address string) ([]*UTXOEntry, error) {
 	txIDsWithOutputs, err := u.addressUTXOIds.getAddressUTXOTransactionIds(address)
 	if err != nil {
 		return nil, err
@@ -116,7 +117,7 @@ func (u *Store) GetUnspentOutputsByAddress(_ context.Context, address string) ([
 		return nil, nil
 	}
 
-	var res []*TransactionOutput
+	var res []*UTXOEntry
 
 	for _, txID := range txIDsWithOutputs {
 		var outputs []*TransactionOutput
@@ -130,9 +131,13 @@ func (u *Store) GetUnspentOutputsByAddress(_ context.Context, address string) ([
 			continue
 		}
 
-		for _, output := range outputs {
+		for vout, output := range outputs {
 			if !isSpentOutput(output) {
-				res = append(res, output)
+				res = append(res, &UTXOEntry{
+					TxID:   txID,
+					Vout:   uint32(vout),
+					Output: output,
+				})
 			}
 		}
 	}
@@ -304,6 +309,11 @@ func (u *Store) setNewTxOutputs(txID string, outputs []*TransactionOutput) error
 func (u *Store) createAddressUTXOTxIdIndex(txID string, outputs []*TransactionOutput) error {
 	txIDsByAdddress := map[string][]string{}
 	for _, output := range outputs {
+		if output == nil {
+			// spent
+			continue
+		}
+
 		for _, address := range output.Addresses {
 			txIDsByAdddress[address] = append(txIDsByAdddress[address], txID)
 		}
