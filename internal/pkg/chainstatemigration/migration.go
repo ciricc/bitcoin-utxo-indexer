@@ -153,8 +153,14 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 		utxoByTxID = append(utxoByTxID, currentUTXO)
 
 		if len(utxoBatch) == m.batchSize {
-			if err := m.storeUTXOBatch(utxoBatch); err != nil {
-				return fmt.Errorf("failed to store utxo batch: %w", err)
+			for {
+				if err := m.storeUTXOBatch(utxoBatch); err != nil {
+					m.logger.Error().Err(err).Msg("failed to stora batch")
+					time.Sleep(5 * time.Second)
+					continue
+				}
+
+				break
 			}
 
 			utxoBatch = make([]*txOutputsEntry, 0, m.batchSize)
