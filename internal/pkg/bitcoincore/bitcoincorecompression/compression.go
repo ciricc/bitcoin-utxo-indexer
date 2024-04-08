@@ -2,7 +2,7 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package blockchain
+package bitcoincorecompression
 
 import (
 	"fmt"
@@ -293,12 +293,12 @@ func decodeCompressedScriptSize(serialized []byte) int {
 	return int(scriptSize)
 }
 
-// putCompressedScript compresses the passed script according to the domain
+// PutCompressedScript compresses the passed script according to the domain
 // specific compression algorithm described above directly into the passed
 // target byte slice.  The target byte slice must be at least large enough to
 // handle the number of bytes returned by the compressedScriptSize function or
 // it will panic.
-func putCompressedScript(target, pkScript []byte) int {
+func PutCompressedScript(target, pkScript []byte) int {
 	// Pay-to-pubkey-hash script.
 	if valid, hash := isPubKeyHash(pkScript); valid {
 		target[0] = cstPayToPubKeyHash
@@ -339,14 +339,14 @@ func putCompressedScript(target, pkScript []byte) int {
 	return vlqSizeLen + len(pkScript)
 }
 
-// decompressScript returns the original script obtained by decompressing the
+// DecompressScript returns the original script obtained by decompressing the
 // passed compressed script according to the domain specific compression
 // algorithm described above.
 //
 // NOTE: The script parameter must already have been proven to be long enough
 // to contain the number of bytes returned by decodeCompressedScriptSize or it
 // will panic.  This is acceptable since it is only an internal function.
-func decompressScript(compressedPkScript []byte) []byte {
+func DecompressScript(compressedPkScript []byte) []byte {
 	// In practice this function will not be called with a zero-length or
 	// nil script since the nil script encoding includes the length, however
 	// the code below assumes the length exists, so just return nil now if
@@ -557,7 +557,7 @@ func compressedTxOutSize(amount uint64, pkScript []byte) int {
 // the compressedTxOutSize function or it will panic.
 func putCompressedTxOut(target []byte, amount uint64, pkScript []byte) int {
 	offset := putVLQ(target, compressTxOutAmount(amount))
-	offset += putCompressedScript(target[offset:], pkScript)
+	offset += PutCompressedScript(target[offset:], pkScript)
 	return offset
 }
 
@@ -583,6 +583,6 @@ func decodeCompressedTxOut(serialized []byte) (uint64, []byte, int, error) {
 
 	// Decompress and return the amount and script.
 	amount := decompressTxOutAmount(compressedAmount)
-	script := decompressScript(serialized[bytesRead : bytesRead+scriptSize])
+	script := DecompressScript(serialized[bytesRead : bytesRead+scriptSize])
 	return amount, script, bytesRead + scriptSize, nil
 }

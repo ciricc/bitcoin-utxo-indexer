@@ -61,7 +61,7 @@ func (u *UTXOGrpcHandlers) GetByAddress(
 		m = append(m, &UTXO.UnspentTransactionOutput{
 			TxId: output.TxID,
 			// Amount:       output.Output.Amount.String(),
-			ScriptPubKey: hex.EncodeToString(output.Output.ScriptBytes),
+			ScriptPubKey: hex.EncodeToString(output.Output.GetScriptBytes()),
 			Index:        int32(output.Vout),
 		})
 	}

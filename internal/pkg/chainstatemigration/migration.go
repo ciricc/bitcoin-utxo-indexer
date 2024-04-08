@@ -156,10 +156,9 @@ func convertUTXOlistToTransactionOutputList(utxos []*utxo.TxOut) []*utxostore.Tr
 
 	for _, utxo := range utxos {
 
-		convertedOutput := &utxostore.TransactionOutput{
-			ScriptBytes: utxo.GetCoin().GetOut().PkScript,
-		}
+		convertedOutput := &utxostore.TransactionOutput{}
 
+		convertedOutput.SetScriptBytes(utxo.GetCoin().GetOut().PkScript)
 		convertedOutput.SetAmount(uint64(utxo.GetCoin().GetOut().Value))
 
 		outputs = append(outputs, convertedOutput)

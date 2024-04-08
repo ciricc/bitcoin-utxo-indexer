@@ -322,10 +322,9 @@ func getTransactionsOutputsForStore(btcConfig BitcoinConfig, tx *blockchain.Tran
 				return nil, fmt.Errorf("failed to convert script to bytes: %w", err)
 			}
 
-			convertedOutput := &utxostore.TransactionOutput{
-				ScriptBytes: scriptBytes,
-			}
+			convertedOutput := &utxostore.TransactionOutput{}
 
+			convertedOutput.SetScriptBytes(scriptBytes)
 			convertedOutput.SetAmount(output.Value.Uint64(decimals))
 
 			convertedOutputs[i] = convertedOutput
