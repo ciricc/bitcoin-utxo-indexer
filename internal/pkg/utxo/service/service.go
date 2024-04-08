@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
@@ -42,6 +44,7 @@ type Service[T any] struct {
 
 type BitcoinConfig interface {
 	GetDecimals() int
+	GetParams() *chaincfg.Params
 }
 
 func New[T any](
@@ -70,6 +73,7 @@ func New[T any](
 		txSets:    sets,
 		logger:    defaultOptions.Logger,
 		txManager: txManager,
+		btcConfig: bitcoinConfig,
 	}
 }
 
@@ -91,8 +95,13 @@ func (u *Service[T]) GetBlockHeight(ctx context.Context) (int64, error) {
 	return height, nil
 }
 
-func (u *Service[T]) GetUTXOByAddress(ctx context.Context, address string) ([]*utxostore.UTXOEntry, error) {
-	outputs, err := u.s.GetUnspentOutputsByAddress(ctx, address)
+func (u *Service[T]) GetUTXOByBase58Address(ctx context.Context, address string) ([]*utxostore.UTXOEntry, error) {
+	btcAddr, err := btcutil.DecodeAddress(address, u.btcConfig.GetParams())
+	if err != nil {
+		return nil, ErrInvalidBase58Address
+	}
+
+	outputs, err := u.s.GetUnspentOutputsByAddress(ctx, hex.EncodeToString(btcAddr.ScriptAddress()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get UTXO by address: %w", err)
 	}

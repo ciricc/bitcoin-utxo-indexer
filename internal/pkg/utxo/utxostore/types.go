@@ -31,7 +31,7 @@ func (t *TransactionOutput) SetScriptBytes(pkScript []byte) {
 	t.CompressedScript = make([]byte, len(pkScript)+16)
 	size := bitcoincorecompression.PutCompressedScript(t.CompressedScript, pkScript)
 	_ = size
-	// t.CompressedScript = t.CompressedScript[:size]
+	t.CompressedScript = t.CompressedScript[:size]
 }
 
 func (t *TransactionOutput) GetAddresses() ([]string, error) {

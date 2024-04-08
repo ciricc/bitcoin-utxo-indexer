@@ -11,8 +11,8 @@ import (
 )
 
 type UTXOService interface {
-	// GetUTXOByAdress must return list of UTXO of the address
-	GetUTXOByAddress(ctx context.Context, address string) ([]*utxostore.UTXOEntry, error)
+	// GetUTXOByBase58Adress must return list of UTXO of the address
+	GetUTXOByBase58Address(ctx context.Context, address string) ([]*utxostore.UTXOEntry, error)
 	GetBlockHeight(ctx context.Context) (int64, error)
 }
 
@@ -47,7 +47,7 @@ func (u *UTXOGrpcHandlers) GetByAddress(
 	ctx context.Context,
 	req *UTXO.GetByAddressRequest,
 ) (*UTXO.GetByAddressResponse, error) {
-	outputs, err := u.s.GetUTXOByAddress(ctx, req.Address)
+	outputs, err := u.s.GetUTXOByBase58Address(ctx, req.Address)
 	if err != nil {
 		return nil, status.Errorf(
 			codes.Internal,
@@ -58,10 +58,11 @@ func (u *UTXOGrpcHandlers) GetByAddress(
 	m := make([]*UTXO.UnspentTransactionOutput, 0, len(outputs))
 
 	for _, output := range outputs {
+		scriptBytes := output.Output.GetScriptBytes()
 		m = append(m, &UTXO.UnspentTransactionOutput{
 			TxId: output.TxID,
 			// Amount:       output.Output.Amount.String(),
-			ScriptPubKey: hex.EncodeToString(output.Output.GetScriptBytes()),
+			ScriptPubKey: hex.EncodeToString(scriptBytes),
 			Index:        int32(output.Vout),
 		})
 	}
