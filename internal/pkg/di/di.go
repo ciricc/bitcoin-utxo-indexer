@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/ciricc/btc-utxo-indexer/config"
@@ -200,8 +199,9 @@ func NewRedisClient(i *do.Injector) (*redis.Client, error) {
 		Username:              cfg.UTXO.Storage.Redis.Username,
 		Password:              cfg.UTXO.Storage.Redis.Password,
 		DB:                    cfg.UTXO.Storage.Redis.DB,
-		WriteTimeout:          time.Minute,
+		WriteTimeout:          -1,
 		ContextTimeoutEnabled: true,
+		ReadTimeout:           -1,
 	})
 
 	return client, nil
