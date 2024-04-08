@@ -7,19 +7,19 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
 )
 
-type redisAddressUTXOIdx struct {
-	s     sets.Sets
+type redisAddressUTXOIdx[T any] struct {
+	s     sets.SetsWithTxManager[T]
 	dbVer string
 }
 
-func newAddressUTXOIndex(databaseVersion string, sets sets.Sets) *redisAddressUTXOIdx {
-	return &redisAddressUTXOIdx{
+func newAddressUTXOIndex[T any](databaseVersion string, sets sets.SetsWithTxManager[T]) *redisAddressUTXOIdx[T] {
+	return &redisAddressUTXOIdx[T]{
 		s:     sets,
 		dbVer: databaseVersion,
 	}
 }
 
-func (u *redisAddressUTXOIdx) deleteAdressUTXOTransactionIds(address string, txIDs []string) error {
+func (u *redisAddressUTXOIdx[T]) deleteAdressUTXOTransactionIds(address string, txIDs []string) error {
 	addressUTXOTxIDsKey := newAddressUTXOTxIDsSetKey(u.dbVer, address)
 
 	err := u.s.RemoveFromSet(context.Background(), addressUTXOTxIDsKey.String(), txIDs...)
@@ -30,7 +30,7 @@ func (u *redisAddressUTXOIdx) deleteAdressUTXOTransactionIds(address string, txI
 	return nil
 }
 
-func (i *redisAddressUTXOIdx) getAddressUTXOTransactionIds(address string) ([]string, error) {
+func (i *redisAddressUTXOIdx[T]) getAddressUTXOTransactionIds(address string) ([]string, error) {
 	addressUTXOTxIDsKey := newAddressUTXOTxIDsSetKey(i.dbVer, address)
 	txIds, err := i.s.GetSet(context.Background(), addressUTXOTxIDsKey.String())
 	if err != nil {
@@ -40,7 +40,7 @@ func (i *redisAddressUTXOIdx) getAddressUTXOTransactionIds(address string) ([]st
 	return txIds, nil
 }
 
-func (i *redisAddressUTXOIdx) addAddressUTXOTransactionIds(
+func (i *redisAddressUTXOIdx[T]) addAddressUTXOTransactionIds(
 	address string,
 	txIDs []string,
 ) error {

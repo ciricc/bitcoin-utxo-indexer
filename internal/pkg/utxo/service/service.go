@@ -8,34 +8,41 @@ import (
 
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/rs/zerolog"
 )
 
-type UTXOStore interface {
+type UTXOStoreMethods interface {
 	AddTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
 	GetOutputsByTxID(_ context.Context, txID string) ([]*utxostore.TransactionOutput, error)
 	SpendOutput(_ context.Context, txID string, idx int) ([]string, *utxostore.TransactionOutput, error)
-	WithStorer(storer keyvaluestore.Store, sets sets.Sets) *utxostore.Store
 	GetUnspentOutputsByAddress(_ context.Context, address string) ([]*utxostore.UTXOEntry, error)
 	GetBlockHeight(_ context.Context) (int64, error)
 	GetBlockHash(_ context.Context) (string, error)
+	SetBlockHeight(_ context.Context, height int64) error
+	SetBlockHash(_ context.Context, hash string) error
+	SpendAllOutputs(_ context.Context, txID string) error
+	UpgradeTransactionOutputs(_ context.Context, txID string, outputs []*utxostore.TransactionOutput) error
+	RemoveAddressTxIDs(_ context.Context, address string, txIDs []string) error
+}
+
+type UTXOStore[T any, O UTXOStoreMethods] interface {
+	UTXOStoreMethods
+
+	WithTx(t txmanager.Transaction[T]) (O, error)
 }
 
 type ServiceOptions struct {
 	Logger *zerolog.Logger
 }
 
-type Service[T any] struct {
-	s UTXOStore
+type Service[T any, UTS UTXOStoreMethods] struct {
+	s UTXOStore[T, UTS]
 
 	txManager *txmanager.TransactionManager[T]
-	txStore   keyvaluestore.StoreWithTxManager[T]
-	txSets    sets.SetsWithTxManager[T]
+
 	btcConfig BitcoinConfig
 
 	// logger is the logger used by the service.
@@ -47,16 +54,13 @@ type BitcoinConfig interface {
 	GetParams() *chaincfg.Params
 }
 
-func New[T any](
-	s UTXOStore,
-
+func New[T any, UTS UTXOStoreMethods](
+	s UTXOStore[T, UTS],
 	txManager *txmanager.TransactionManager[T],
-	utxoKVStore keyvaluestore.StoreWithTxManager[T],
-	sets sets.SetsWithTxManager[T],
-	bitcoinConfig BitcoinConfig,
 
+	bitcoinConfig BitcoinConfig,
 	options *ServiceOptions,
-) *Service[T] {
+) *Service[T, UTS] {
 	defaultOptions := &ServiceOptions{
 		Logger: zerolog.DefaultContextLogger,
 	}
@@ -67,17 +71,15 @@ func New[T any](
 		}
 	}
 
-	return &Service[T]{
+	return &Service[T, UTS]{
 		s:         s,
-		txStore:   utxoKVStore,
-		txSets:    sets,
 		logger:    defaultOptions.Logger,
 		txManager: txManager,
 		btcConfig: bitcoinConfig,
 	}
 }
 
-func (u *Service[T]) GetBlockHash(ctx context.Context) (string, error) {
+func (u *Service[T, UTS]) GetBlockHash(ctx context.Context) (string, error) {
 	hash, err := u.s.GetBlockHash(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to get block hash from store: %w", err)
@@ -86,7 +88,7 @@ func (u *Service[T]) GetBlockHash(ctx context.Context) (string, error) {
 	return hash, nil
 }
 
-func (u *Service[T]) GetBlockHeight(ctx context.Context) (int64, error) {
+func (u *Service[Ti, UTS]) GetBlockHeight(ctx context.Context) (int64, error) {
 	height, err := u.s.GetBlockHeight(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get block height from store: %w", err)
@@ -95,7 +97,7 @@ func (u *Service[T]) GetBlockHeight(ctx context.Context) (int64, error) {
 	return height, nil
 }
 
-func (u *Service[T]) GetUTXOByBase58Address(ctx context.Context, address string) ([]*utxostore.UTXOEntry, error) {
+func (u *Service[T, _]) GetUTXOByBase58Address(ctx context.Context, address string) ([]*utxostore.UTXOEntry, error) {
 	btcAddr, err := btcutil.DecodeAddress(address, u.btcConfig.GetParams())
 	if err != nil {
 		return nil, ErrInvalidBase58Address
@@ -109,7 +111,7 @@ func (u *Service[T]) GetUTXOByBase58Address(ctx context.Context, address string)
 	return outputs, nil
 }
 
-func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) error {
+func (u *Service[T, _]) AddFromBlock(ctx context.Context, block *blockchain.Block) error {
 	return u.txManager.Do(func(ctx context.Context, tx txmanager.Transaction[T]) error {
 		currentHeight, err := u.s.GetBlockHeight(ctx)
 		if err != nil {
@@ -127,17 +129,12 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 			return err
 		}
 
-		storeWithTx, err := u.txStore.WithTx(tx)
+		utxoStoreWithTx, err := u.s.WithTx(tx)
 		if err != nil {
 			return err
 		}
 
-		setsWithTx, err := u.txSets.WithTx(tx)
-		if err != nil {
-			return err
-		}
-
-		utxoStoreWithTx := u.s.WithStorer(storeWithTx, setsWithTx)
+		utxoStoreWithTx.GetBlockHeight(context.Background())
 
 		// Updating block height
 		if err := utxoStoreWithTx.SetBlockHeight(ctx, block.GetHeight()); err != nil {
@@ -218,7 +215,7 @@ func (u *Service[T]) AddFromBlock(ctx context.Context, block *blockchain.Block) 
 	})
 }
 
-func (s *Service[T]) getSpeningOutputs(
+func (s *Service[T, _]) getSpeningOutputs(
 	ctx context.Context,
 	tx *blockchain.Block,
 ) (map[string][]*utxostore.TransactionOutput, error) {
@@ -257,7 +254,7 @@ func (s *Service[T]) getSpeningOutputs(
 // the transaction outputs
 // It returns the list of addresses which need to dereference form this transaction
 // after spending
-func (s *Service[T]) spendOutputs(
+func (s *Service[T, _]) spendOutputs(
 	ctx context.Context,
 	storedOutputs map[string][]*utxostore.TransactionOutput,
 	tx *blockchain.Transaction,

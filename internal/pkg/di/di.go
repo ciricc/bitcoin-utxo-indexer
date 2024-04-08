@@ -204,43 +204,45 @@ func NewRedisClient(i *do.Injector) (*redis.Client, error) {
 	return client, nil
 }
 
-func NewScannerStateWithInMemoryStore(i *do.Injector) (*state.InMemoryState, error) {
-	logger, err := do.Invoke[*zerolog.Logger](i)
-	if err != nil {
-		return nil, fmt.Errorf("invoke logger error: %w", err)
+func GetScannerStateWithInMemoryStoreByUTXOStoreType[T any]() do.Provider[*state.InMemoryState] {
+	return func(i *do.Injector) (*state.InMemoryState, error) {
+		logger, err := do.Invoke[*zerolog.Logger](i)
+		if err != nil {
+			return nil, fmt.Errorf("invoke logger error: %w", err)
+		}
+
+		utxoStore, err := do.Invoke[*utxostore.Store[T]](i)
+		if err != nil {
+			return nil, fmt.Errorf("invoke UTXO store error: %w", err)
+		}
+
+		lastUTXOBlockHash, err := utxoStore.GetBlockHash(context.Background())
+		if err != nil && !errors.Is(err, utxostore.ErrBlockHashNotFound) {
+			return nil, fmt.Errorf("failed to get last UTXO block hash: %w", err)
+		}
+
+		restClient, err := do.Invoke[*restclient.RESTClient](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke rest client: %w", err)
+		}
+
+		genesisBlockHash, err := restClient.GetBlockHash(context.Background(), 0)
+		if err != nil {
+			return nil, fmt.Errorf("faield to get genesis block hash: %w", err)
+		}
+
+		if lastUTXOBlockHash == "" {
+			lastUTXOBlockHash = genesisBlockHash.String()
+		}
+
+		logger.Info().Str("lastUTXOBlockHash", lastUTXOBlockHash).Msg("got last UTXO block hash")
+
+		state := state.NewInMemoryState(
+			lastUTXOBlockHash,
+		)
+
+		return state, nil
 	}
-
-	utxoStore, err := do.Invoke[*utxostore.Store](i)
-	if err != nil {
-		return nil, fmt.Errorf("invoke UTXO store error: %w", err)
-	}
-
-	lastUTXOBlockHash, err := utxoStore.GetBlockHash(context.Background())
-	if err != nil && !errors.Is(err, utxostore.ErrBlockHashNotFound) {
-		return nil, fmt.Errorf("failed to get last UTXO block hash: %w", err)
-	}
-
-	restClient, err := do.Invoke[*restclient.RESTClient](i)
-	if err != nil {
-		return nil, fmt.Errorf("failed to invoke rest client: %w", err)
-	}
-
-	genesisBlockHash, err := restClient.GetBlockHash(context.Background(), 0)
-	if err != nil {
-		return nil, fmt.Errorf("faield to get genesis block hash: %w", err)
-	}
-
-	if lastUTXOBlockHash == "" {
-		lastUTXOBlockHash = genesisBlockHash.String()
-	}
-
-	logger.Info().Str("lastUTXOBlockHash", lastUTXOBlockHash).Msg("got last UTXO block hash")
-
-	state := state.NewInMemoryState(
-		lastUTXOBlockHash,
-	)
-
-	return state, nil
 }
 
 func GetScannerStateConstructor[T any]() do.Provider[*state.KeyValueScannerState] {
@@ -300,8 +302,8 @@ func NewShutdowner(i *do.Injector) (*shutdown.Shutdowner, error) {
 	return shutdowner, nil
 }
 
-func GetUTXOStoreConstructor[T any]() do.Provider[*utxostore.Store] {
-	return func(i *do.Injector) (*utxostore.Store, error) {
+func GetUTXOStoreConstructor[T any]() do.Provider[*utxostore.Store[T]] {
+	return func(i *do.Injector) (*utxostore.Store[T], error) {
 		kvStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[T]](i)
 		if err != nil {
 			return nil, fmt.Errorf("invoke redis store error: %w", err)
@@ -340,21 +342,11 @@ func NewRedisSets(i *do.Injector) (sets.SetsWithTxManager[redis.Pipeliner], erro
 	return redissets.New(redis), nil
 }
 
-func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T]] {
-	return func(i *do.Injector) (*utxoservice.Service[T], error) {
-		utxoStore, err := do.Invoke[*utxostore.Store](i)
+func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T, *utxostore.Store[T]]] {
+	return func(i *do.Injector) (*utxoservice.Service[T, *utxostore.Store[T]], error) {
+		utxoStore, err := do.Invoke[*utxostore.Store[T]](i)
 		if err != nil {
 			return nil, fmt.Errorf("failed to invoke UTXO store: %w", err)
-		}
-
-		utxoKVStore, err := do.Invoke[keyvaluestore.StoreWithTxManager[T]](i)
-		if err != nil {
-			return nil, fmt.Errorf("failed to invoke UTXO KV store: %w", err)
-		}
-
-		sets, err := do.Invoke[sets.SetsWithTxManager[T]](i)
-		if err != nil {
-			return nil, fmt.Errorf("failed to invoke sets: %w", err)
 		}
 
 		logger, err := do.Invoke[*zerolog.Logger](i)
@@ -373,10 +365,8 @@ func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T]] {
 		}
 
 		utxoStoreService := utxoservice.New(
-			utxoStore,
+			utxoservice.UTXOStore[T, *utxostore.Store[T]](utxoStore),
 			txManager,
-			utxoKVStore,
-			sets,
 			bitcoinConfig,
 			&utxoservice.ServiceOptions{
 				Logger: logger,
@@ -438,7 +428,7 @@ func NewLogger(i *do.Injector) (*zerolog.Logger, error) {
 
 func GeUTXOGRPCHandlersConstructor[T any]() do.Provider[*grpchandlers.UTXOGrpcHandlers] {
 	return func(i *do.Injector) (*grpchandlers.UTXOGrpcHandlers, error) {
-		service, err := do.Invoke[*utxoservice.Service[T]](i)
+		service, err := do.Invoke[*utxoservice.Service[T, *utxostore.Store[T]]](i)
 		if err != nil {
 			return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
 		}

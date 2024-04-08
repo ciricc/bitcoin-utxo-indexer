@@ -6,40 +6,53 @@ import (
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 )
 
-type Store struct {
-	s keyvaluestore.Store
+type Store[T any] struct {
+	s    keyvaluestore.StoreWithTxManager[T]
+	sets sets.SetsWithTxManager[T]
 
-	addressUTXOIds *redisAddressUTXOIdx
+	addressUTXOIds *redisAddressUTXOIdx[T]
 
 	// dbVer storing the version of the database (prefix for all keys)
 	dbVer string
 }
 
-func New(
+func New[T any](
 	databaseVersion string,
-	storer keyvaluestore.Store,
-	setsStore sets.Sets,
-) (*Store, error) {
-	store := &Store{
+	storer keyvaluestore.StoreWithTxManager[T],
+	setsStore sets.SetsWithTxManager[T],
+) (*Store[T], error) {
+	store := &Store[T]{
 		s:              storer,
 		addressUTXOIds: newAddressUTXOIndex(databaseVersion, setsStore),
 		dbVer:          databaseVersion,
+		sets:           setsStore,
 	}
 
 	return store, nil
 }
 
-func (u *Store) WithStorer(storer keyvaluestore.Store, sets sets.Sets) *Store {
-	return &Store{
-		s:              storer,
-		addressUTXOIds: newAddressUTXOIndex(u.dbVer, sets),
-		dbVer:          u.dbVer,
+func (u *Store[T]) WithTx(tx txmanager.Transaction[T]) (*Store[T], error) {
+	storerWithTx, err := u.s.WithTx(tx)
+	if err != nil {
+		return nil, err
 	}
+
+	setsWithTx, err := u.sets.WithTx(tx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Store[T]{
+		s:              storerWithTx,
+		addressUTXOIds: newAddressUTXOIndex(u.dbVer, setsWithTx),
+		dbVer:          u.dbVer,
+	}, nil
 }
 
-func (u *Store) Flush(ctx context.Context) error {
+func (u *Store[T]) Flush(ctx context.Context) error {
 	if err := u.s.DeleteByPattern(ctx, u.dbVer+":*"); err != nil {
 		return fmt.Errorf("flush error: %w", err)
 	}
@@ -47,7 +60,7 @@ func (u *Store) Flush(ctx context.Context) error {
 	return nil
 }
 
-func (u *Store) GetBlockHeight(_ context.Context) (int64, error) {
+func (u *Store[T]) GetBlockHeight(_ context.Context) (int64, error) {
 	blockHeightKey := newBlockHeightKey(u.dbVer)
 
 	var currentBlockHeight int64
@@ -60,7 +73,7 @@ func (u *Store) GetBlockHeight(_ context.Context) (int64, error) {
 	return currentBlockHeight, nil
 }
 
-func (u *Store) GetBlockHash(_ context.Context) (string, error) {
+func (u *Store[T]) GetBlockHash(_ context.Context) (string, error) {
 	blockHashKey := newBlockHashKey(u.dbVer)
 
 	var currentBlockHash string
@@ -77,7 +90,7 @@ func (u *Store) GetBlockHash(_ context.Context) (string, error) {
 	return currentBlockHash, nil
 }
 
-func (u *Store) SetBlockHeight(_ context.Context, blockHeight int64) error {
+func (u *Store[T]) SetBlockHeight(_ context.Context, blockHeight int64) error {
 	blockHeightKey := newBlockHeightKey(u.dbVer)
 
 	err := u.s.Set(blockHeightKey.String(), blockHeight)
@@ -88,7 +101,7 @@ func (u *Store) SetBlockHeight(_ context.Context, blockHeight int64) error {
 	return nil
 }
 
-func (u *Store) SetBlockHash(_ context.Context, blockHash string) error {
+func (u *Store[T]) SetBlockHash(_ context.Context, blockHash string) error {
 	blockHashKey := newBlockHashKey(u.dbVer)
 
 	err := u.s.Set(blockHashKey.String(), blockHash)
@@ -99,7 +112,7 @@ func (u *Store) SetBlockHash(_ context.Context, blockHash string) error {
 	return nil
 }
 
-func (u *Store) RemoveAddressTxIDs(_ context.Context, address string, txIDs []string) error {
+func (u *Store[T]) RemoveAddressTxIDs(_ context.Context, address string, txIDs []string) error {
 	if err := u.addressUTXOIds.deleteAdressUTXOTransactionIds(address, txIDs); err != nil {
 		return fmt.Errorf("delete address UTXO tx ids error: %w", err)
 	}
@@ -107,7 +120,7 @@ func (u *Store) RemoveAddressTxIDs(_ context.Context, address string, txIDs []st
 	return nil
 }
 
-func (u *Store) GetUnspentOutputsByAddress(_ context.Context, address string) ([]*UTXOEntry, error) {
+func (u *Store[T]) GetUnspentOutputsByAddress(_ context.Context, address string) ([]*UTXOEntry, error) {
 	txIDsWithOutputs, err := u.addressUTXOIds.getAddressUTXOTransactionIds(address)
 	if err != nil {
 		return nil, err
@@ -145,7 +158,7 @@ func (u *Store) GetUnspentOutputsByAddress(_ context.Context, address string) ([
 	return res, nil
 }
 
-func (u *Store) GetOutputsByTxID(
+func (u *Store[T]) GetOutputsByTxID(
 	_ context.Context,
 	txID string,
 ) ([]*TransactionOutput, error) {
@@ -163,7 +176,7 @@ func (u *Store) GetOutputsByTxID(
 	return outputs, nil
 }
 
-func (u *Store) SpendOutputFromRetrievedOutputs(
+func (u *Store[T]) SpendOutputFromRetrievedOutputs(
 	_ context.Context,
 	txID string,
 	outputs []*TransactionOutput,
@@ -173,7 +186,7 @@ func (u *Store) SpendOutputFromRetrievedOutputs(
 	return u.spendOutput(txID, idx, outputs)
 }
 
-func (u *Store) SpendAllOutputs(
+func (u *Store[T]) SpendAllOutputs(
 	_ context.Context,
 	txID string,
 ) error {
@@ -185,7 +198,7 @@ func (u *Store) SpendAllOutputs(
 	return nil
 }
 
-func (u *Store) SpendOutput(
+func (u *Store[T]) SpendOutput(
 	_ context.Context,
 	txID string,
 	idx int,
@@ -205,7 +218,7 @@ func (u *Store) SpendOutput(
 	return u.spendOutput(txID, idx, outputs)
 }
 
-func (u *Store) spendOutput(
+func (u *Store[T]) spendOutput(
 	txID string,
 	idx int,
 	outputs []*TransactionOutput,
@@ -275,7 +288,7 @@ func (u *Store) spendOutput(
 	return dereferencedAddressed, &spentOutput, nil
 }
 
-func (u *Store) UpgradeTransactionOutputs(
+func (u *Store[T]) UpgradeTransactionOutputs(
 	ctx context.Context,
 	txID string,
 	newOutputs []*TransactionOutput,
@@ -288,7 +301,7 @@ func (u *Store) UpgradeTransactionOutputs(
 	return nil
 }
 
-func (u *Store) AddTransactionOutputs(
+func (u *Store[T]) AddTransactionOutputs(
 	ctx context.Context,
 	txID string,
 	outputs []*TransactionOutput,
@@ -306,7 +319,7 @@ func (u *Store) AddTransactionOutputs(
 	return nil
 }
 
-func (u *Store) setNewTxOutputs(txID string, outputs []*TransactionOutput) error {
+func (u *Store[T]) setNewTxOutputs(txID string, outputs []*TransactionOutput) error {
 	txOutputsKey := newTransactionIDKey(u.dbVer, txID)
 
 	err := u.s.Set(txOutputsKey.String(), outputs)
@@ -317,7 +330,7 @@ func (u *Store) setNewTxOutputs(txID string, outputs []*TransactionOutput) error
 	return nil
 }
 
-func (u *Store) createAddressUTXOTxIdIndex(txID string, outputs []*TransactionOutput) error {
+func (u *Store[T]) createAddressUTXOTxIdIndex(txID string, outputs []*TransactionOutput) error {
 	txIDsByAdddress := map[string][]string{}
 	for _, output := range outputs {
 		if output == nil {

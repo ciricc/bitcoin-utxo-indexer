@@ -42,7 +42,6 @@ func ProvideUTXOServiceDeps(i *do.Injector) {
 }
 
 func ProvideScannerDeps(i *do.Injector) {
-	do.Provide(i, di.NewScannerStateWithInMemoryStore)
-
+	do.Provide(i, di.GetScannerStateWithInMemoryStoreByUTXOStoreType[redis.Pipeliner]())
 	do.Provide(i, di.NewBlockchainScanner)
 }

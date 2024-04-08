@@ -15,6 +15,7 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/chainstatemigration"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/di"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/migrationmanager"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/restclient"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
@@ -124,7 +125,7 @@ func runUTXOScanner(
 		return fmt.Errorf("failed to invoke configuration: %w", err)
 	}
 
-	utxoStoreService, err := do.Invoke[*utxoservice.Service[redis.Pipeliner]](utxoContainer)
+	utxoStoreService, err := do.Invoke[*utxoservice.Service[redis.Pipeliner, *utxostore.Store[redis.Pipeliner]]](utxoContainer)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to create utxo store service")
 	}
@@ -243,7 +244,7 @@ func deleteOldVersionsData() error {
 
 		do.Override(i, di.GetUTXOStoreConstructor[redis.Pipeliner]())
 
-		utxoStore, err := do.Invoke[*utxostore.Store](i)
+		utxoStore, err := do.Invoke[*utxostore.Store[redis.Pipeliner]](i)
 		if err != nil {
 			return fmt.Errorf("failed to invoke UTXO store: %w", err)
 		}
@@ -265,7 +266,12 @@ func deleteOldVersionsData() error {
 }
 
 func runChainstateMigration(chainstateContainer *do.Injector) error {
-	oldUtxoStore, err := do.Invoke[*utxostore.Store](chainstateContainer)
+	cfg, err := do.Invoke[*config.Config](chainstateContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke configuration: %w", err)
+	}
+
+	oldUtxoStore, err := do.Invoke[*utxostore.Store[redis.Pipeliner]](chainstateContainer)
 	if err != nil {
 		return fmt.Errorf("failed to invoke UTXO store: %w", err)
 	}
@@ -317,15 +323,22 @@ func runChainstateMigration(chainstateContainer *do.Injector) error {
 		return nil
 	}
 
-	utxoStore, err := do.Invoke[*utxostore.Store](chainstateContainer)
+	utxoStore, err := do.Invoke[*utxostore.Store[redis.Pipeliner]](chainstateContainer)
 	if err != nil {
 		return fmt.Errorf("failed to invoke UTXO store: %w", err)
+	}
+
+	txManager, err := do.Invoke[*txmanager.TransactionManager[redis.Pipeliner]](chainstateContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke tx manager: %w", err)
 	}
 
 	migration := chainstatemigration.NewMigrator(
 		logger,
 		chainstateDB,
 		utxoStore,
+		txManager,
+		cfg.ChainstateMigration.BatchSize,
 		blockInfo.Height,
 	)
 

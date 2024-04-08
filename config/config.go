@@ -21,6 +21,10 @@ type Config struct {
 		Decimals int `yaml:"decimals"`
 	} `yaml:"blockchainParams"`
 
+	ChainstateMigration struct {
+		BatchSize int `yaml:"batchSize"`
+	} `yaml:"chainstateMigration"`
+
 	BlockchainNode struct {
 		RestURL string `yaml:"restURL"`
 	} `yaml:"blockchainNode"`
@@ -85,6 +89,13 @@ func (c Config) Validate() error {
 		validation.Field(&c.UTXO.Storage.LevelDB.Path, validation.Length(0, -1)),
 	); err != nil {
 		return fmt.Errorf("failed to validate utxo storage configuration: %w", err)
+	}
+
+	if err := validation.ValidateStruct(
+		&c.ChainstateMigration,
+		validation.Field(&c.ChainstateMigration.BatchSize, validation.Required, validation.Min(1)),
+	); err != nil {
+		return fmt.Errorf("failed to validate chainstate migration options options: %w", err)
 	}
 
 	if err := validation.ValidateStruct(
