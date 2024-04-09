@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/IBM/sarama"
 	"github.com/ciricc/btc-utxo-indexer/config"
@@ -410,7 +411,9 @@ func NewUniversalBitcoinRESTClient(i *do.Injector) (*restclient.RESTClient, erro
 		return nil, fmt.Errorf("failed to parse blockchain node rest url: %w", err)
 	}
 
-	restClient, err := restclient.New(nodeURL, nil)
+	restClient, err := restclient.New(nodeURL, &restclient.RESTClientOptions{
+		RequestTimeout: 5 * time.Minute,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rest client: %w", err)
 	}
