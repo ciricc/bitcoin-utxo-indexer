@@ -11,7 +11,8 @@ COPY . .
 RUN go mod download
 
 # Build the Go app.
-RUN go build -o /main ./cmd/main.go
+RUN mkdir -p ./bin
+RUN go build -o ./bin ./...
 
 # Use a Docker multi-stage build to create a lean production image.
 # Start from scratch to keep the image size small.
@@ -23,7 +24,7 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /
 
 # Copy the Pre-built binary file from the previous stage. 
-COPY --from=builder /main .
+COPY --from=builder /app/bin /usr/local/bin
 
 # Command to run the executable.
-CMD ["./main"]
+CMD ["/usr/local/bin/utxo-indexer"]

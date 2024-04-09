@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"strconv"
@@ -419,6 +420,17 @@ func NewUniversalBitcoinRESTClient(i *do.Injector) (*restclient.RESTClient, erro
 	}
 
 	return restClient, nil
+}
+
+func NewSlogLogger(i *do.Injector) (*slog.Logger, error) {
+	cfg, err := do.Invoke[*config.Config](i)
+	if err != nil {
+		return nil, fmt.Errorf("invoke config error: %w", err)
+	}
+
+	log := logger.NewSlogLogger(cfg)
+
+	return log, nil
 }
 
 func NewLogger(i *do.Injector) (*zerolog.Logger, error) {

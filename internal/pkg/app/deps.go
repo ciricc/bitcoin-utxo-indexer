@@ -33,6 +33,7 @@ func ProvideChainstateDeps(i *do.Injector) {
 func ProvideCommonDeps(i *do.Injector) {
 	do.Provide(i, di.NewConfig)
 	do.Provide(i, di.NewLogger)
+	do.Provide(i, di.NewSlogLogger)
 }
 
 func ProvideUTXOServiceDeps(i *do.Injector) {
