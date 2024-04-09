@@ -103,6 +103,9 @@ func (u *Service[T, _]) GetUTXOByBase58Address(ctx context.Context, address stri
 		return nil, ErrInvalidBase58Address
 	}
 
+	hexAddr := hex.EncodeToString(btcAddr.ScriptAddress())
+	u.logger.Debug().Str("addr", hexAddr).Msg("getting utxo by this address")
+
 	outputs, err := u.s.GetUnspentOutputsByAddress(ctx, hex.EncodeToString(btcAddr.ScriptAddress()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get UTXO by address: %w", err)
@@ -167,7 +170,7 @@ func (u *Service[T, _]) AddFromBlock(ctx context.Context, block *blockchain.Bloc
 				return fmt.Errorf("failed to store utxo: %w", err)
 			}
 
-			dereferencedAddresses, err := u.spendOutputs(ctx, spendingOutputs, tx)
+			dereferencedAddresses, err := u.spendOutputs(spendingOutputs, tx)
 			if err != nil {
 				return fmt.Errorf("failed to spend outputs: %w", err)
 			}
@@ -255,7 +258,6 @@ func (s *Service[T, _]) getSpeningOutputs(
 // It returns the list of addresses which need to dereference form this transaction
 // after spending
 func (s *Service[T, _]) spendOutputs(
-	ctx context.Context,
 	storedOutputs map[string][]*utxostore.TransactionOutput,
 	tx *blockchain.Transaction,
 ) (map[string]string, error) {
@@ -266,14 +268,24 @@ func (s *Service[T, _]) spendOutputs(
 	for _, input := range tx.GetInputs() {
 		if input.SpendingOutput != nil {
 
-			spendingOutputs := storedOutputs[input.SpendingOutput.TxID]
 			vout := input.SpendingOutput.VOut
 
+			spendingOutputs, ok := storedOutputs[input.SpendingOutput.TxID]
+			if !ok {
+				s.logger.Error().Int("vout", vout).Str("txID", input.SpendingOutput.TxID).Msg("failed to spend output, not found outputs set")
+
+				return nil, utxostore.ErrNotFound
+			}
+
 			if len(spendingOutputs) <= vout {
+				s.logger.Error().Int("vout", vout).Int("spendingCount", len(spendingOutputs)).Str("txID", input.SpendingOutput.TxID).Msg("failed to spend output, not found")
+
 				return nil, utxostore.ErrNotFound
 			}
 
 			if spendingOutputs[vout] == nil {
+				s.logger.Error().Int("vout", vout).Str("txID", input.SpendingOutput.TxID).Msg("failed to spend output, already spent")
+
 				return nil, utxostore.ErrAlreadySpent
 			}
 

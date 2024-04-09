@@ -146,10 +146,27 @@ func (u *Store[T]) GetUnspentOutputsByAddress(_ context.Context, address string)
 
 		for vout, output := range outputs {
 			if !isSpentOutput(output) {
+				addresses, err := output.GetAddresses()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get addresses: %w", err)
+				}
+				foundAddr := false
+
+				for _, addr := range addresses {
+					if address == addr {
+						foundAddr = true
+						break
+					}
+				}
+
+				if !foundAddr {
+					continue
+				}
+
 				res = append(res, &UTXOEntry{
 					TxID:   txID,
 					Vout:   uint32(vout),
-					Output: output,
+					Output: outputs[vout],
 				})
 			}
 		}

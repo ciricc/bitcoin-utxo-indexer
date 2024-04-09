@@ -44,8 +44,8 @@ func main() {
 				},
 			},
 			{
-				Name:  "keyscount",
-				Usage: "Returns count of keys in the chainstate",
+				Name:  "utxocount",
+				Usage: "Returns count of UTXO in the chainstate",
 				Action: func(ctx *cli.Context) error {
 					countKeys, err := getChainstateKeysCount(ctx.Context, chainState)
 					if err != nil {
@@ -61,6 +61,7 @@ func main() {
 				Name:  "verify",
 				Usage: "Verify the chainstate with the UTXO store",
 				Action: func(ctx *cli.Context) error {
+
 					return nil
 				},
 			},
@@ -76,14 +77,14 @@ func getChainstateKeysCount(ctx context.Context, chainState *chainstate.DB) (int
 	var count int64
 
 	iterator := chainState.NewUTXOIterator()
-	fmt.Println("Counting chainstate keys ...")
+	fmt.Println("Counting chainstate UTXOs ...")
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	go func() {
 		for range ticker.C {
-			fmt.Println("Keys count:", count)
+			fmt.Println("Count:", count)
 		}
 	}()
 

@@ -147,11 +147,14 @@ func runUTXOScanner(
 			if err := scanner.Start(ctx, func(ctx context.Context, block *blockchain.Block) error {
 				logger.Info().Str("hash", block.GetHash().String()).Msg("got new block")
 
+				isAlreadyScanned := false
 				if err := utxoStoreService.AddFromBlock(ctx, block); err != nil {
 					if !errors.Is(err, utxoservice.ErrBlockAlreadyStored) {
 						logger.Err(err).Str("hash", block.GetHash().String()).Msg("failed to store UTXO from block")
 
 						return fmt.Errorf("failed to store UTXO from block: %w", err)
+					} else {
+						isAlreadyScanned = true
 					}
 				}
 
@@ -160,7 +163,11 @@ func runUTXOScanner(
 					return fmt.Errorf("failed to update last scanner block hash: %w", err)
 				}
 
-				logger.Info().Str("hash", block.GetHash().String()).Msg("scanned new block")
+				if !isAlreadyScanned {
+					logger.Info().Str("hash", block.GetHash().String()).Msg("scanned new block")
+				} else {
+					logger.Info().Str("hash", block.GetHash().String()).Msg("block already scanned")
+				}
 
 				return nil
 			}); err != nil {
