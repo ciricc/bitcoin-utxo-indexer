@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/app"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/chainstate"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/utxo"
 	"github.com/samber/do"
 	"github.com/urfave/cli/v2"
 )
@@ -61,6 +63,46 @@ func main() {
 				Name:  "verify",
 				Usage: "Verify the chainstate with the UTXO store",
 				Action: func(ctx *cli.Context) error {
+
+					return nil
+				},
+			},
+			{
+				Name:      "txouts",
+				Usage:     "Returnss the list of UTXO of the transaction",
+				Args:      true,
+				ArgsUsage: "<tx_id>",
+				Action: func(ctx *cli.Context) error {
+					txIDHex := ctx.Args().Get(0)
+
+					txID, err := hex.DecodeString(txIDHex)
+					if err != nil || len(txID) != 32 {
+						return fmt.Errorf("invalid tx id")
+					}
+
+					index := 0
+					outputs := []*utxo.TxOut{}
+
+					for {
+						output, err := chainState.GetOutputs(ctx.Context, txID, index)
+						if err != nil {
+							if errors.Is(err, chainstate.ErrNotFound) {
+								break
+							}
+							return fmt.Errorf("failed to get outputs: %w", err)
+						}
+
+						outputs = append(outputs, output)
+						index++
+					}
+
+					enc := json.NewEncoder(os.Stdout)
+					enc.SetIndent("", "  ")
+
+					err = enc.Encode(outputs)
+					if err != nil {
+						return fmt.Errorf("failed to marshal result: %w", err)
+					}
 
 					return nil
 				},

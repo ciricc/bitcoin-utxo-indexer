@@ -2,10 +2,23 @@ package utxo
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 
+	"github.com/btcsuite/btcd/wire"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/binaryutils"
 )
+
+type coinMarshaled struct {
+	IsCoinbase bool        `json:"coinbase"`
+	Output     *wire.TxOut `json:"output"`
+}
+
+type txOutMarshaled struct {
+	Coin  *coinMarshaled `json:"coin"`
+	TxID  string         `json:"txId"`
+	Index uint64         `json:"index"`
+}
 
 type TxOut struct {
 	txID  []byte
@@ -29,6 +42,20 @@ func (t *TxOut) GetTxID() string {
 
 func (t *TxOut) Index() uint64 {
 	return t.index
+}
+
+func (t *TxOut) MarshalJSON() ([]byte, error) {
+	coin := t.GetCoin()
+	tJson := txOutMarshaled{
+		Coin: &coinMarshaled{
+			Output:     coin.GetOut(),
+			IsCoinbase: coin.IsCoinbase(),
+		},
+		TxID:  t.GetTxID(),
+		Index: t.index,
+	}
+
+	return json.Marshal(&tJson)
 }
 
 func (t *TxOut) Deserialize(r BytesBuffer) error {

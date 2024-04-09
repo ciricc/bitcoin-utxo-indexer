@@ -60,12 +60,12 @@ func serializeSizeVLQ(n uint64) int {
 	return size
 }
 
-// putVLQ serializes the provided number to a variable-length quantity according
+// PutVLQ serializes the provided number to a variable-length quantity according
 // to the format described above and returns the number of bytes of the encoded
 // value.  The result is placed directly into the passed byte slice which must
 // be at least large enough to handle the number of bytes returned by the
 // serializeSizeVLQ function or it will panic.
-func putVLQ(target []byte, n uint64) int {
+func PutVLQ(target []byte, n uint64) int {
 	offset := 0
 	for ; ; offset++ {
 		// The high bit is set when another byte follows.
@@ -334,7 +334,7 @@ func PutCompressedScript(target, pkScript []byte) int {
 	// script preceded by the sum of its size and the number of special
 	// cases encoded as a variable length quantity.
 	encodedSize := uint64(len(pkScript) + numSpecialScripts)
-	vlqSizeLen := putVLQ(target, encodedSize)
+	vlqSizeLen := PutVLQ(target, encodedSize)
 	copy(target[vlqSizeLen:], pkScript)
 	return vlqSizeLen + len(pkScript)
 }
@@ -556,7 +556,7 @@ func compressedTxOutSize(amount uint64, pkScript []byte) int {
 // slice must be at least large enough to handle the number of bytes returned by
 // the compressedTxOutSize function or it will panic.
 func putCompressedTxOut(target []byte, amount uint64, pkScript []byte) int {
-	offset := putVLQ(target, compressTxOutAmount(amount))
+	offset := PutVLQ(target, compressTxOutAmount(amount))
 	offset += PutCompressedScript(target[offset:], pkScript)
 	return offset
 }

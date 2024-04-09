@@ -45,10 +45,7 @@ func (u *UTXOIterator) Next(ctx context.Context) (*utxo.TxOut, error) {
 		return nil, fmt.Errorf("deobfuscate UTXO error: %w", err)
 	}
 
-	fullTxOut := make([]byte, 0, len(outpoint)+len(deobfuscatedValue))
-
-	fullTxOut = append(fullTxOut, outpoint...)
-	fullTxOut = append(fullTxOut, deobfuscatedValue...)
+	fullTxOut := buildTxOutBytes(outpoint, deobfuscatedValue)
 
 	txOut := utxo.NewTxOut()
 
@@ -57,6 +54,15 @@ func (u *UTXOIterator) Next(ctx context.Context) (*utxo.TxOut, error) {
 	}
 
 	return txOut, nil
+}
+
+func buildTxOutBytes(outpoint []byte, coin []byte) []byte {
+	fullTxOut := make([]byte, 0, len(outpoint)+len(coin))
+
+	fullTxOut = append(fullTxOut, outpoint...)
+	fullTxOut = append(fullTxOut, coin...)
+
+	return fullTxOut
 }
 
 // deserializeVLQ deserializes the provided variable-length quantity according
