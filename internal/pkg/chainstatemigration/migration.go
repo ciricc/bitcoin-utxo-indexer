@@ -150,7 +150,12 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 			utxoByTxID = []*utxo.TxOut{}
 		}
 
-		utxoByTxID = append(utxoByTxID, currentUTXO)
+		utxoIdx := int(currentUTXO.Index())
+
+		utxoByTxID, err = pushElementToPlace(utxoByTxID, currentUTXO, utxoIdx)
+		if err != nil {
+			return fmt.Errorf("failed to push utxo (like panic): %w", err)
+		}
 
 		if len(utxoBatch) == m.batchSize {
 			for {
@@ -243,4 +248,29 @@ func percentage[T int | int64](a T, b T) float64 {
 	f := int64(float64(a) / float64(b) * 100_00)
 
 	return float64(f) / 100
+}
+
+var (
+	ErrNoNegativePlaces = errors.New("no negative places")
+)
+
+func pushElementToPlace[T any](list []T, element T, placeIdx int) ([]T, error) {
+	if placeIdx < 0 {
+		return nil, ErrNoNegativePlaces
+	}
+
+	if len(list) > placeIdx {
+		list[placeIdx] = element
+
+		return list, nil
+	} else if len(list) == placeIdx {
+		return append(list, element), nil
+	} else {
+		newList := make([]T, placeIdx+1)
+		newList[placeIdx] = element
+
+		copy(newList[0:placeIdx], list)
+
+		return newList, nil
+	}
 }
