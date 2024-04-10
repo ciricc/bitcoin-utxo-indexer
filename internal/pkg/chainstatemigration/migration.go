@@ -228,6 +228,10 @@ func convertUTXOlistToTransactionOutputList(utxos []*utxo.TxOut) []*utxostore.Tr
 	outputs := make([]*utxostore.TransactionOutput, 0, len(utxos))
 
 	for _, utxo := range utxos {
+		// spent
+		if utxo == nil {
+			continue
+		}
 
 		convertedOutput := &utxostore.TransactionOutput{}
 
