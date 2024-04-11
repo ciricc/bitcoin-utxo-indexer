@@ -23,6 +23,7 @@ type ChainstateDB interface {
 }
 
 type UTXOStoreMethods interface {
+	AreExiststsOutputs(ctx context.Context, txID string) (bool, error)
 	AddTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
 	SetBlockHeight(ctx context.Context, blockHeight int64) error
 	SetBlockHash(ctx context.Context, blockHash string) error
@@ -41,7 +42,7 @@ type BitcoinConfig interface {
 }
 
 type txOutputsEntry struct {
-	txId    string
+	txID    string
 	outputs []*utxostore.TransactionOutput
 }
 
@@ -63,6 +64,16 @@ type Migrator[T any, UTS UTXOStoreMethods] struct {
 
 	// Logger
 	logger *zerolog.Logger
+
+	// When the migration process fails, it tries to recover and continue migration after
+	// It iterates through the current chainstate and getting the UTXO be each txID until getting "not found"
+	//
+	// Which means that in the chainstate we got the transaction no existing in the database
+	// So, we need to add the outputs started from this transaction
+	//
+	// After we found the end of the migrated transactions, we make this flag to "true"
+	// To stop checking the existing txs
+	restoredLastSavedTxID bool
 }
 
 func NewMigrator[T any, UTS UTXOStoreMethods](
@@ -85,7 +96,8 @@ func NewMigrator[T any, UTS UTXOStoreMethods](
 		chainstateBlockHeight: chainstateBlockHeight,
 		utxoStoreTxManager:    utxoStoreTxManager,
 
-		batchSize: batchSize,
+		batchSize:             batchSize,
+		restoredLastSavedTxID: false,
 	}
 }
 
@@ -95,9 +107,9 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 
 	m.logger.Info().Msg("flushing current UTXO store")
 
-	if err := m.utxoStore.Flush(ctx); err != nil {
-		return fmt.Errorf("failed to flush store: %w", err)
-	}
+	// if err := m.utxoStore.Flush(ctx); err != nil {
+	// 	return fmt.Errorf("failed to flush store: %w", err)
+	// }
 
 	countOfKeys, err := m.cdb.ApproximateSize()
 	if err != nil {
@@ -141,7 +153,7 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 				// migrate utxo grouped by tx id
 				outputs := convertUTXOlistToTransactionOutputList(utxoByTxID)
 				utxoBatch = append(utxoBatch, &txOutputsEntry{
-					txId:    currentTxID,
+					txID:    currentTxID,
 					outputs: outputs,
 				})
 			}
@@ -159,7 +171,7 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 
 		if len(utxoBatch) == m.batchSize {
 			for {
-				if err := m.storeUTXOBatch(utxoBatch); err != nil {
+				if err := m.storeUTXOBatch(ctx, utxoBatch); err != nil {
 					m.logger.Error().Err(err).Msg("failed to stora batch")
 					time.Sleep(5 * time.Second)
 					continue
@@ -173,7 +185,7 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 	}
 
 	if len(utxoBatch) > 0 {
-		if err := m.storeUTXOBatch(utxoBatch); err != nil {
+		if err := m.storeUTXOBatch(ctx, utxoBatch); err != nil {
 			return fmt.Errorf("failed to store utxo batch: %w", err)
 		}
 
@@ -206,8 +218,50 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 }
 
 func (m *Migrator[T, _]) storeUTXOBatch(
+	ctx context.Context,
 	batch []*txOutputsEntry,
 ) error {
+
+	if len(batch) == 0 {
+		m.logger.Warn().Msg("the batch is empty")
+
+		return nil
+	}
+
+	if !m.restoredLastSavedTxID {
+		m.logger.Debug().Msg("Trying to restore migration process...")
+
+		allFound := true
+
+		for _, txEntry := range batch {
+			found, err := m.utxoStore.AreExiststsOutputs(ctx, txEntry.txID)
+			if err != nil {
+				return fmt.Errorf("fialed to check outputs: %w", err)
+			}
+
+			allFound = allFound && found
+
+			if !found {
+				m.logger.Debug().Str("txID", txEntry.txID).Msg("not found tx entry")
+
+				m.restoredLastSavedTxID = true
+				break
+			}
+		}
+
+		if allFound {
+			m.logger.Debug().
+				Str("firstTxID", batch[0].txID).
+				Str("lastTxID", batch[len(batch)-1].txID).
+				Msg("found all tx entries")
+
+			// skip set operations
+			return nil
+		}
+	}
+
+	// defer time.Sleep(10 * time.Second)
+
 	return m.utxoStoreTxManager.Do(func(ctx context.Context, tx txmanager.Transaction[T]) error {
 		utxoStoreWithTx, err := m.utxoStore.WithTx(tx)
 		if err != nil {
@@ -215,7 +269,7 @@ func (m *Migrator[T, _]) storeUTXOBatch(
 		}
 
 		for _, txEntry := range batch {
-			if err := utxoStoreWithTx.AddTransactionOutputs(ctx, txEntry.txId, txEntry.outputs); err != nil {
+			if err := utxoStoreWithTx.AddTransactionOutputs(ctx, txEntry.txID, txEntry.outputs); err != nil {
 				return fmt.Errorf("failed to add transaction outputs: %w", err)
 			}
 		}

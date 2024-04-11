@@ -318,6 +318,21 @@ func (u *Store[T]) UpgradeTransactionOutputs(
 	return nil
 }
 
+func (u *Store[T]) AreExiststsOutputs(
+	ctx context.Context,
+	txID string,
+) (bool, error) {
+	var outputs []any
+	var txOutputsKey = newTransactionIDKey(u.dbVer, txID)
+
+	found, err := u.s.Get(txOutputsKey.String(), &outputs)
+	if err != nil {
+		return false, fmt.Errorf("failed to get transaction outputs: %w", err)
+	}
+
+	return found, nil
+}
+
 func (u *Store[T]) AddTransactionOutputs(
 	ctx context.Context,
 	txID string,

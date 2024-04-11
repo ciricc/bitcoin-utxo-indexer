@@ -9,7 +9,7 @@ blockchainState:
   path: '/home/ciricc/.bitcoin/chainstate'
 
 chainstateMigration:
-  batchSize: 5000
+  batchSize: 1 
 
 blockchainNode:
   # The URL of the Bitcoin Core node REST interface
