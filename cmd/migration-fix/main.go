@@ -104,6 +104,7 @@ func main() {
 				//
 				// migrate utxo grouped by tx id
 				outputs := chainstatemigration.ConvertUTXOlistToTransactionOutputList(currentUTXOs)
+				logger.Info().Int("len", len(outputs)).Msg("formed outputs")
 
 				sem.Acquire()
 				wg.Add(1)
