@@ -151,7 +151,7 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 		if currentTxID != currentUTXO.GetTxID() {
 			if len(utxoByTxID) > 0 {
 				// migrate utxo grouped by tx id
-				outputs := convertUTXOlistToTransactionOutputList(utxoByTxID)
+				outputs := ConvertUTXOlistToTransactionOutputList(utxoByTxID)
 				utxoBatch = append(utxoBatch, &txOutputsEntry{
 					txID:    currentTxID,
 					outputs: outputs,
@@ -164,7 +164,7 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 
 		utxoIdx := int(currentUTXO.Index())
 
-		utxoByTxID, err = pushElementToPlace(utxoByTxID, currentUTXO, utxoIdx)
+		utxoByTxID, err = PushElementToPlace(utxoByTxID, currentUTXO, utxoIdx)
 		if err != nil {
 			return fmt.Errorf("failed to push utxo (like panic): %w", err)
 		}
@@ -260,8 +260,13 @@ func (m *Migrator[T, _]) storeUTXOBatch(
 		}
 	}
 
-	// defer time.Sleep(10 * time.Second)
+	return m.updateUTXObatch(ctx, batch)
+}
 
+func (m *Migrator[T, UTS]) updateUTXObatch(
+	ctx context.Context,
+	batch []*txOutputsEntry,
+) error {
 	return m.utxoStoreTxManager.Do(func(ctx context.Context, tx txmanager.Transaction[T]) error {
 		utxoStoreWithTx, err := m.utxoStore.WithTx(tx)
 		if err != nil {
@@ -278,7 +283,7 @@ func (m *Migrator[T, _]) storeUTXOBatch(
 	})
 }
 
-func convertUTXOlistToTransactionOutputList(utxos []*utxo.TxOut) []*utxostore.TransactionOutput {
+func ConvertUTXOlistToTransactionOutputList(utxos []*utxo.TxOut) []*utxostore.TransactionOutput {
 	outputs := make([]*utxostore.TransactionOutput, 0, len(utxos))
 
 	for _, utxo := range utxos {
@@ -312,7 +317,7 @@ var (
 	ErrNoNegativePlaces = errors.New("no negative places")
 )
 
-func pushElementToPlace[T any](list []T, element T, placeIdx int) ([]T, error) {
+func PushElementToPlace[T any](list []T, element T, placeIdx int) ([]T, error) {
 	if placeIdx < 0 {
 		return nil, ErrNoNegativePlaces
 	}

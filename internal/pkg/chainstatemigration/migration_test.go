@@ -51,7 +51,7 @@ func TestPushElementToPlace(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		newList, err := pushElementToPlace(tc.list, tc.element, tc.placeTo)
+		newList, err := PushElementToPlace(tc.list, tc.element, tc.placeTo)
 		assert.ErrorIs(t, err, tc.expectedError)
 		assert.Equal(t, tc.expectedList, newList)
 	}

@@ -59,15 +59,7 @@ func main() {
 				},
 			},
 			{
-				Name:  "verify",
-				Usage: "Verify the chainstate with the UTXO store",
-				Action: func(ctx *cli.Context) error {
-
-					return nil
-				},
-			},
-			{
-				Name:      "txouts",
+				Name:      "gettxouts",
 				Usage:     "Returnss the list of UTXO of the transaction",
 				Args:      true,
 				ArgsUsage: "<tx_id>",
@@ -79,25 +71,10 @@ func main() {
 						return fmt.Errorf("invalid tx id")
 					}
 
-					// index := 0
-
 					outputs, err := chainState.GetOutputs(ctx.Context, txID)
 					if err != nil {
 						return err
 					}
-
-					// for {
-					// 	output, err := chainState.GetOutput(ctx.Context, txID, index)
-					// 	if err != nil {
-					// 		if errors.Is(err, chainstate.ErrNotFound) {
-					// 			break
-					// 		}
-					// 		return fmt.Errorf("failed to get outputs: %w", err)
-					// 	}
-
-					// 	outputs = append(outputs, output)
-					// 	index++
-					// }
 
 					enc := json.NewEncoder(os.Stdout)
 					enc.SetIndent("", "  ")
@@ -147,10 +124,4 @@ func getChainstateKeysCount(ctx context.Context, chainState *chainstate.DB) (int
 	}
 
 	return count, nil
-}
-
-// This function runs the chainstate checking process
-// First, it iterates over all chainstate keys and find them in the
-func runChainstateChecker(chainstateContainer *do.Injector) error {
-	return nil
 }
