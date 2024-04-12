@@ -9,6 +9,7 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/chainstate"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/utxo"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/chainstatemigration"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/semaphore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
@@ -65,6 +66,9 @@ func main() {
 
 	logger.Info().Msg("start fixing migration")
 
+	sem := semaphore.New(50000)
+	defer sem.Close()
+
 	for {
 		currentUTXO, err := utxoIerator.Next(ctx)
 		if err != nil {
@@ -84,11 +88,13 @@ func main() {
 				// migrate utxo grouped by tx id
 				outputs := chainstatemigration.ConvertUTXOlistToTransactionOutputList(currentUTXOs)
 
+				sem.Acquire()
 				wg.Add(1)
 
 				// run getting current outputs from the utxo store and checking the validity of them
 				go func(txID string, outputs []*utxostore.TransactionOutput) {
 					defer func() {
+						sem.Release()
 						wg.Done()
 					}()
 
