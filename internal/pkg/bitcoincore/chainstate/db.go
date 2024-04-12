@@ -3,6 +3,7 @@ package chainstate
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/bitcoincorecompression"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/utxo"
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 type DB struct {
@@ -53,7 +55,33 @@ func (d *DB) GetDeobfuscator() *ChainstateDeobfuscator {
 	return d.deobfuscator
 }
 
-func (d *DB) GetOutputs(ctx context.Context, txID []byte, index int) (*utxo.TxOut, error) {
+func (d *DB) GetOutputs(ctx context.Context, txID []byte) ([]*utxo.TxOut, error) {
+	txKey := buildTxIDKey(txID)
+
+	iterator := newUTXOIterator(d.ldb.NewIterator(&util.Range{Start: txKey}, nil), d.deobfuscator)
+
+	utxos := make([]*utxo.TxOut, 0)
+
+	for {
+		utxo, err := iterator.Next(ctx)
+		if err != nil {
+			if errors.Is(err, ErrNoKeysMore) {
+				break
+			}
+
+			return nil, fmt.Errorf("failed to iterate over UTXOs")
+		}
+		if utxo.GetTxID() == hex.EncodeToString(txID) {
+			utxos = append(utxos, utxo)
+		} else {
+			break
+		}
+	}
+
+	return utxos, nil
+}
+
+func buildTxIDKey(txID []byte) []byte {
 	txKey := make([]byte, 0, 33)
 
 	txKey = append(txKey, 'C')
@@ -61,6 +89,12 @@ func (d *DB) GetOutputs(ctx context.Context, txID []byte, index int) (*utxo.TxOu
 	txID = binaryutils.ReverseBytesWithCopy(txID)
 
 	txKey = append(txKey, txID...)
+
+	return txKey
+}
+
+func (d *DB) GetOutput(ctx context.Context, txID []byte, index int) (*utxo.TxOut, error) {
+	txKey := buildTxIDKey(txID)
 
 	idxBytes := make([]byte, 12)
 

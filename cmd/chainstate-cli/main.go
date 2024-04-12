@@ -12,7 +12,6 @@ import (
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/app"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/chainstate"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/utxo"
 	"github.com/samber/do"
 	"github.com/urfave/cli/v2"
 )
@@ -80,21 +79,25 @@ func main() {
 						return fmt.Errorf("invalid tx id")
 					}
 
-					index := 0
-					outputs := []*utxo.TxOut{}
+					// index := 0
 
-					for {
-						output, err := chainState.GetOutputs(ctx.Context, txID, index)
-						if err != nil {
-							if errors.Is(err, chainstate.ErrNotFound) {
-								break
-							}
-							return fmt.Errorf("failed to get outputs: %w", err)
-						}
-
-						outputs = append(outputs, output)
-						index++
+					outputs, err := chainState.GetOutputs(ctx.Context, txID)
+					if err != nil {
+						return err
 					}
+
+					// for {
+					// 	output, err := chainState.GetOutput(ctx.Context, txID, index)
+					// 	if err != nil {
+					// 		if errors.Is(err, chainstate.ErrNotFound) {
+					// 			break
+					// 		}
+					// 		return fmt.Errorf("failed to get outputs: %w", err)
+					// 	}
+
+					// 	outputs = append(outputs, output)
+					// 	index++
+					// }
 
 					enc := json.NewEncoder(os.Stdout)
 					enc.SetIndent("", "  ")
