@@ -75,10 +75,16 @@ func main() {
 
 	keyI := 0
 	fixed := 0
+	lastFixedTxID := ""
 
 	go func() {
 		for range progressTicker.C {
-			logger.Info().Int("keyI", keyI).Str("txID", currentTxID).Int("fixed", fixed).Msg("fixing the migration")
+			logger.Info().
+				Int("keyI", keyI).
+				Str("txID", currentTxID).
+				Int("fixed", fixed).
+				Str("lastFixedTxID", lastFixedTxID).
+				Msg("fixing the migration")
 		}
 	}()
 
@@ -124,6 +130,8 @@ func main() {
 						}
 
 						if len(utxoFromStore) != len(outputs) {
+							lastFixedTxID = txID
+
 							fixed++
 							migrationFixer.PushTxToPatch(txID, outputs)
 						}
