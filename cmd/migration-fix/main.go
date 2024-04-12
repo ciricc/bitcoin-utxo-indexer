@@ -120,6 +120,8 @@ func main() {
 						logger.Fatal().Str("txID", txID).Err(err).Msg("failed to get outputs by tx id")
 					}
 
+					logger.Debug().Str("txID", txID).Any("utxos", utxoFromStore).Any("outputs", outputs).Msg("got utxos from the utxo store")
+
 					if len(utxoFromStore) != len(outputs) {
 						//p ush to fixer
 						logger.Debug().Str("txID", txID).Msg("push the transaction outputs to the fixer")
