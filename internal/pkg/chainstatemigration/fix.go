@@ -75,6 +75,8 @@ func (m *MigrationFixer[T, UTS]) runTxsUpdater(ctx context.Context, quitCh chan<
 						continue
 					}
 
+					m.logger.Debug().Int("batchSize", len(batch)).Str("txID", batch[len(batch)-1].txID).Msg("stored the batch")
+
 					batch = make([]*txOutputsEntry, 0)
 					break
 				}
