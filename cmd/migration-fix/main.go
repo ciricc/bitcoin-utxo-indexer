@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/app"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/chainstate"
@@ -66,8 +67,18 @@ func main() {
 
 	logger.Info().Msg("start fixing migration")
 
+	progressTicker := time.NewTicker(time.Second * 5)
+	defer progressTicker.Stop()
+
 	sem := semaphore.New(50000)
 	defer sem.Close()
+
+	keyI := 0
+	go func() {
+		for range progressTicker.C {
+			logger.Info().Int("keyI", keyI).Str("txID", currentTxID).Msg("fixing the migration")
+		}
+	}()
 
 	for {
 		currentUTXO, err := utxoIerator.Next(ctx)
@@ -80,6 +91,7 @@ func main() {
 
 			return
 		}
+		keyI++
 
 		if currentTxID != currentUTXO.GetTxID() {
 			if len(currentUTXOs) > 0 {
