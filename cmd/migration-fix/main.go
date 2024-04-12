@@ -93,9 +93,9 @@ func main() {
 		}
 
 		keyI++
-		if currentUTXO.GetTxID() != "78d898a678b475aa464ca77d2250bf1eeb89fe777198d7d5bccf47d15e4e6002" && currentTxID != "78d898a678b475aa464ca77d2250bf1eeb89fe777198d7d5bccf47d15e4e6002" {
-			continue
-		}
+		// if currentUTXO.GetTxID() != "78d898a678b475aa464ca77d2250bf1eeb89fe777198d7d5bccf47d15e4e6002" && currentTxID != "78d898a678b475aa464ca77d2250bf1eeb89fe777198d7d5bccf47d15e4e6002" {
+		// 	continue
+		// }
 
 		if currentTxID != currentUTXO.GetTxID() {
 			if len(currentUTXOs) > 0 {
@@ -120,7 +120,7 @@ func main() {
 						logger.Fatal().Str("txID", txID).Err(err).Msg("failed to get outputs by tx id")
 					}
 
-					logger.Debug().Str("txID", txID).Any("utxos", utxoFromStore).Any("outputs", outputs).Msg("got utxos from the utxo store")
+					// logger.Debug().Str("txID", txID).Any("utxos", utxoFromStore).Any("outputs", outputs).Msg("got utxos from the utxo store")
 
 					if len(utxoFromStore) != len(outputs) {
 						//p ush to fixer
@@ -137,11 +137,11 @@ func main() {
 
 		utxoIdx := int(currentUTXO.Index())
 
-		logger.Debug().Int("idx", utxoIdx).Str("txID", currentTxID).Int("len", len(currentUTXOs)).Msg("pushing utxo to list")
+		// logger.Debug().Int("idx", utxoIdx).Str("txID", currentTxID).Int("len", len(currentUTXOs)).Msg("pushing utxo to list")
 
 		currentUTXOs, err = chainstatemigration.PushElementToPlace(currentUTXOs, currentUTXO, utxoIdx)
 
-		logger.Debug().Int("idx", utxoIdx).Str("txID", currentTxID).Int("len", len(currentUTXOs)).Msg("pushed utxo to list")
+		// logger.Debug().Int("idx", utxoIdx).Str("txID", currentTxID).Int("len", len(currentUTXOs)).Msg("pushed utxo to list")
 
 		if err != nil {
 			logger.Fatal().Err(err).Msg("failed to push the utxo to the list")
