@@ -74,9 +74,11 @@ func main() {
 	defer sem.Close()
 
 	keyI := 0
+	fixed := 0
+
 	go func() {
 		for range progressTicker.C {
-			logger.Info().Int("keyI", keyI).Str("txID", currentTxID).Msg("fixing the migration")
+			logger.Info().Int("keyI", keyI).Str("txID", currentTxID).Int("fixed", fixed).Msg("fixing the migration")
 		}
 	}()
 
@@ -122,8 +124,7 @@ func main() {
 					// logger.Debug().Str("txID", txID).Any("utxos", utxoFromStore).Any("outputs", outputs).Msg("got utxos from the utxo store")
 
 					if len(utxoFromStore) != len(outputs) {
-						//p ush to fixer
-						logger.Debug().Str("txID", txID).Msg("push the transaction outputs to the fixer")
+						fixed++
 						migrationFixer.PushTxToPatch(txID, outputs)
 					}
 				}(currentTxID, outputs)
@@ -149,6 +150,7 @@ func main() {
 
 	wg.Wait()
 
+	logger.Info().Int("fixed", fixed).Msg("fixing done")
 	logger.Debug().Msg("canceling the context")
 
 	cancel()
