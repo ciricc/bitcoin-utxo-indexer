@@ -70,7 +70,7 @@ func main() {
 	progressTicker := time.NewTicker(time.Second * 5)
 	defer progressTicker.Stop()
 
-	sem := semaphore.New(50000)
+	sem := semaphore.New(150000)
 	defer sem.Close()
 
 	keyI := 0
