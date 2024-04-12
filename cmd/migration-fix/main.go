@@ -70,7 +70,7 @@ func main() {
 	progressTicker := time.NewTicker(time.Second * 5)
 	defer progressTicker.Stop()
 
-	sem := semaphore.New(150000)
+	sem := semaphore.New(500000)
 	defer sem.Close()
 
 	keyI := 0
@@ -91,6 +91,11 @@ func main() {
 
 			return
 		}
+
+		if currentUTXO.GetTxID() != "78d898a678b475aa464ca77d2250bf1eeb89fe777198d7d5bccf47d15e4e6002" {
+			continue
+		}
+
 		keyI++
 
 		if currentTxID != currentUTXO.GetTxID() {
