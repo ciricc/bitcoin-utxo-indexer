@@ -18,7 +18,7 @@ type MigrationFixer[T any, UTS UTXOStoreMethods] struct {
 
 func NewMigrationFixer[T any, UTS UTXOStoreMethods](logger *zerolog.Logger, migration *Migrator[T, UTS]) *MigrationFixer[T, UTS] {
 	return &MigrationFixer[T, UTS]{
-		patchTxsCh: make(chan *txOutputsEntry, 1024),
+		patchTxsCh: make(chan *txOutputsEntry, 100000),
 		logger:     logger,
 		migrator:   migration,
 	}
@@ -43,7 +43,7 @@ func (m *MigrationFixer[T, UTS]) runTxsUpdater(ctx context.Context, quitCh chan<
 	batch := []*txOutputsEntry{}
 	batchLock := sync.Mutex{}
 
-	updateBatchTicker := time.NewTicker(time.Second)
+	updateBatchTicker := time.NewTicker(10 * time.Second)
 	waitLastBatchPatchedCh := make(chan struct{}, 1)
 
 	go func() {
@@ -58,7 +58,7 @@ func (m *MigrationFixer[T, UTS]) runTxsUpdater(ctx context.Context, quitCh chan<
 			select {
 			case <-ctx.Done():
 				return
-			default:
+			case <-updateBatchTicker.C:
 				batchLock.Lock()
 				if len(batch) == 0 {
 					batchLock.Unlock()
