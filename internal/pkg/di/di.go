@@ -203,6 +203,7 @@ func NewRedisClient(i *do.Injector) (*redis.Client, error) {
 		DB:                    cfg.UTXO.Storage.Redis.DB,
 		WriteTimeout:          -1,
 		ContextTimeoutEnabled: true,
+		PoolTimeout:           -1,
 		ReadTimeout:           -1,
 	})
 

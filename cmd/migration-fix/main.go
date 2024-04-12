@@ -116,17 +116,22 @@ func main() {
 						wg.Done()
 					}()
 
-					utxoFromStore, err := utxoStore.GetOutputsByTxID(ctx, txID)
-					if err != nil {
-						logger.Fatal().Str("txID", txID).Err(err).Msg("failed to get outputs by tx id")
+					for {
+						utxoFromStore, err := utxoStore.GetOutputsByTxID(ctx, txID)
+						if err != nil {
+							logger.Error().Err(err).Str("txID", txID).Err(err).Msg("failed to get outputs by tx id")
+							continue
+						}
+
+						if len(utxoFromStore) != len(outputs) {
+							fixed++
+							migrationFixer.PushTxToPatch(txID, outputs)
+						}
+
+						break
 					}
 
 					// logger.Debug().Str("txID", txID).Any("utxos", utxoFromStore).Any("outputs", outputs).Msg("got utxos from the utxo store")
-
-					if len(utxoFromStore) != len(outputs) {
-						fixed++
-						migrationFixer.PushTxToPatch(txID, outputs)
-					}
 				}(currentTxID, outputs)
 
 			}
