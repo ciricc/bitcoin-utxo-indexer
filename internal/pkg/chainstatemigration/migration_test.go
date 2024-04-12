@@ -29,9 +29,9 @@ func TestPushElementToPlace(t *testing.T) {
 		},
 		{
 			list:          []any{},
-			expectedList:  []any{1},
+			expectedList:  []any{nil, 1},
 			element:       1,
-			placeTo:       0,
+			placeTo:       1,
 			expectedError: nil,
 		},
 		{

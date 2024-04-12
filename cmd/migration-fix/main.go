@@ -136,7 +136,11 @@ func main() {
 		utxoIdx := int(currentUTXO.Index())
 
 		logger.Debug().Int("idx", utxoIdx).Str("txID", currentTxID).Int("len", len(currentUTXOs)).Msg("pushing utxo to list")
+
 		currentUTXOs, err = chainstatemigration.PushElementToPlace(currentUTXOs, currentUTXO, utxoIdx)
+
+		logger.Debug().Int("idx", utxoIdx).Str("txID", currentTxID).Int("len", len(currentUTXOs)).Msg("pushed utxo to list")
+
 		if err != nil {
 			logger.Fatal().Err(err).Msg("failed to push the utxo to the list")
 		}
