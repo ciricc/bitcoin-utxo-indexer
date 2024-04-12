@@ -125,7 +125,6 @@ func main() {
 					for {
 						utxoFromStore, err := utxoStore.GetOutputsByTxID(ctx, txID)
 						if err != nil {
-							logger.Error().Err(err).Str("txID", txID).Err(err).Msg("failed to get outputs by tx id")
 							time.Sleep(time.Second * 10)
 							continue
 						}
