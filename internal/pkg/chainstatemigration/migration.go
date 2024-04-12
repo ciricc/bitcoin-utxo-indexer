@@ -289,6 +289,7 @@ func ConvertUTXOlistToTransactionOutputList(utxos []*utxo.TxOut) []*utxostore.Tr
 	for _, utxo := range utxos {
 		// spent
 		if utxo == nil {
+			outputs = append(outputs, nil)
 			continue
 		}
 
