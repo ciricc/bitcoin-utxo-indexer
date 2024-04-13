@@ -160,7 +160,7 @@ func (i *Store) saveStore(f *os.File) error {
 }
 
 // Delete implements keyvaluestore.Store.
-func (i *Store) Delete(key string) error {
+func (i *Store) Delete(_ context.Context, key string) error {
 	i.mx.Lock()
 	defer i.mx.Unlock()
 
@@ -170,7 +170,7 @@ func (i *Store) Delete(key string) error {
 }
 
 // Get implements keyvaluestore.Store.
-func (i *Store) Get(key string, v any) (found bool, err error) {
+func (i *Store) Get(_ context.Context, key string, v any) (found bool, err error) {
 	i.mx.RLock()
 	defer i.mx.RUnlock()
 
@@ -187,7 +187,7 @@ func (i *Store) Get(key string, v any) (found bool, err error) {
 }
 
 // ListKeys implements keyvaluestore.Store.
-func (i *Store) ListKeys(match string, si func(key string, getValue func(v interface{}) error) (stop bool, err error)) error {
+func (i *Store) ListKeys(_ context.Context, match string, si func(key string, getValue func(v interface{}) error) (stop bool, err error)) error {
 	if si == nil {
 		return nil
 	}
@@ -223,7 +223,7 @@ func (i *Store) ListKeys(match string, si func(key string, getValue func(v inter
 }
 
 // Set implements keyvaluestore.Store.
-func (i *Store) Set(key string, v any) error {
+func (i *Store) Set(_ context.Context, key string, v any) error {
 	i.mx.Lock()
 	defer i.mx.Unlock()
 
@@ -248,6 +248,10 @@ func (i *Store) Flush(_ context.Context) error {
 
 func (i *Store) DeleteByPattern(_ context.Context, pattern string) error {
 	return fmt.Errorf("unimplemented")
+}
+
+func (r *Store) MulGet(ctx context.Context, allocValue func(ctx context.Context, key string) any, keys ...string) error {
+	return fmt.Errorf("unimplemented mulget")
 }
 
 var _ keyvaluestore.StoreWithTxManager[*Store] = (*Store)(nil)

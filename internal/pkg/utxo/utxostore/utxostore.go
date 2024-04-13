@@ -3,12 +3,10 @@ package utxostore
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
-	"golang.org/x/sync/errgroup"
 )
 
 type Store[T any] struct {
@@ -62,12 +60,12 @@ func (u *Store[T]) Flush(ctx context.Context) error {
 	return nil
 }
 
-func (u *Store[T]) GetBlockHeight(_ context.Context) (int64, error) {
+func (u *Store[T]) GetBlockHeight(ctx context.Context) (int64, error) {
 	blockHeightKey := newBlockHeightKey(u.dbVer)
 
 	var currentBlockHeight int64
 
-	_, err := u.s.Get(blockHeightKey.String(), &currentBlockHeight)
+	_, err := u.s.Get(ctx, blockHeightKey.String(), &currentBlockHeight)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get current block height: %w", err)
 	}
@@ -75,12 +73,12 @@ func (u *Store[T]) GetBlockHeight(_ context.Context) (int64, error) {
 	return currentBlockHeight, nil
 }
 
-func (u *Store[T]) GetBlockHash(_ context.Context) (string, error) {
+func (u *Store[T]) GetBlockHash(ctx context.Context) (string, error) {
 	blockHashKey := newBlockHashKey(u.dbVer)
 
 	var currentBlockHash string
 
-	found, err := u.s.Get(blockHashKey.String(), &currentBlockHash)
+	found, err := u.s.Get(ctx, blockHashKey.String(), &currentBlockHash)
 	if err != nil {
 		return "", fmt.Errorf("failed to get current block hash: %w", err)
 	}
@@ -92,10 +90,10 @@ func (u *Store[T]) GetBlockHash(_ context.Context) (string, error) {
 	return currentBlockHash, nil
 }
 
-func (u *Store[T]) SetBlockHeight(_ context.Context, blockHeight int64) error {
+func (u *Store[T]) SetBlockHeight(ctx context.Context, blockHeight int64) error {
 	blockHeightKey := newBlockHeightKey(u.dbVer)
 
-	err := u.s.Set(blockHeightKey.String(), blockHeight)
+	err := u.s.Set(ctx, blockHeightKey.String(), blockHeight)
 	if err != nil {
 		return fmt.Errorf("failed to store new block height: %w", err)
 	}
@@ -103,10 +101,10 @@ func (u *Store[T]) SetBlockHeight(_ context.Context, blockHeight int64) error {
 	return nil
 }
 
-func (u *Store[T]) SetBlockHash(_ context.Context, blockHash string) error {
+func (u *Store[T]) SetBlockHash(ctx context.Context, blockHash string) error {
 	blockHashKey := newBlockHashKey(u.dbVer)
 
-	err := u.s.Set(blockHashKey.String(), blockHash)
+	err := u.s.Set(ctx, blockHashKey.String(), blockHash)
 	if err != nil {
 		return fmt.Errorf("failed to store new block hash: %w", err)
 	}
@@ -114,16 +112,16 @@ func (u *Store[T]) SetBlockHash(_ context.Context, blockHash string) error {
 	return nil
 }
 
-func (u *Store[T]) RemoveAddressTxIDs(_ context.Context, address string, txIDs []string) error {
-	if err := u.addressUTXOIds.deleteAdressUTXOTransactionIds(address, txIDs); err != nil {
+func (u *Store[T]) RemoveAddressTxIDs(ctx context.Context, address string, txIDs []string) error {
+	if err := u.addressUTXOIds.deleteAdressUTXOTransactionIds(ctx, address, txIDs); err != nil {
 		return fmt.Errorf("delete address UTXO tx ids error: %w", err)
 	}
 
 	return nil
 }
 
-func (u *Store[T]) GetUnspentOutputsByAddress(_ context.Context, address string) ([]*UTXOEntry, error) {
-	txIDsWithOutputs, err := u.addressUTXOIds.getAddressUTXOTransactionIds(address)
+func (u *Store[T]) GetUnspentOutputsByAddress(ctx context.Context, address string) ([]*UTXOEntry, error) {
+	txIDsWithOutputs, err := u.addressUTXOIds.getAddressUTXOTransactionIds(ctx, address)
 	if err != nil {
 		return nil, err
 	}
@@ -132,73 +130,85 @@ func (u *Store[T]) GetUnspentOutputsByAddress(_ context.Context, address string)
 		return nil, nil
 	}
 
-	resMx := sync.Mutex{}
-	res := []*UTXOEntry{}
-
-	errGroup := errgroup.Group{}
+	txIDKeys := make([]string, 0, len(txIDsWithOutputs))
+	txIDKeysFormatted := map[string]string{}
 
 	for _, txID := range txIDsWithOutputs {
-		txID := txID
-		errGroup.Go(func() error {
-			var outputs []*TransactionOutput
+		formattedTxID := newTransactionIDKey(u.dbVer, txID).String()
+		txIDKeys = append(txIDKeys, formattedTxID)
 
-			found, err := u.s.Get(newTransactionIDKey(u.dbVer, txID).String(), &outputs)
-			if err != nil {
-				return fmt.Errorf("failed to get outputs: %w", err)
-			}
-
-			if !found {
-				return nil
-			}
-
-			for vout, output := range outputs {
-				if !isSpentOutput(output) {
-					addresses, err := output.GetAddresses()
-					if err != nil {
-						return fmt.Errorf("failed to get addresses: %w", err)
-					}
-
-					foundAddr := false
-
-					for _, addr := range addresses {
-						if address == addr {
-							foundAddr = true
-							break
-						}
-					}
-
-					if !foundAddr {
-						continue
-					}
-
-					resMx.Lock()
-					res = append(res, &UTXOEntry{
-						TxID:   txID,
-						Vout:   uint32(vout),
-						Output: outputs[vout],
-					})
-					resMx.Unlock()
-				}
-			}
-			return nil
-		})
+		txIDKeysFormatted[formattedTxID] = txID
 	}
 
-	err = errGroup.Wait()
-	if err != nil {
-		return nil, err
+	type outputsEntry struct {
+		txID    string
+		outputs []*TransactionOutput
+	}
+
+	outputsEntries := []*outputsEntry{}
+
+	if err := u.s.MulGet(ctx, func(ctx context.Context, key string) any {
+		entry := outputsEntry{
+			txID:    txIDKeysFormatted[key],
+			outputs: []*TransactionOutput{},
+		}
+
+		outputsEntries = append(outputsEntries, &entry)
+
+		return &entry.outputs
+	}, txIDKeys...); err != nil {
+		return nil, fmt.Errorf("failed to get tx outputs: %w", err)
+	}
+
+	if len(outputsEntries) == 0 {
+		return nil, nil
+	}
+
+	res := []*UTXOEntry{}
+
+	for _, entry := range outputsEntries {
+		txID := entry.txID
+		outputs := entry.outputs
+
+		for vout, output := range outputs {
+			if !isSpentOutput(output) {
+				addresses, err := output.GetAddresses()
+				if err != nil {
+					return nil, fmt.Errorf("failed to get addresses: %w", err)
+				}
+
+				foundAddr := false
+
+				for _, addr := range addresses {
+					if address == addr {
+						foundAddr = true
+						break
+					}
+				}
+
+				if !foundAddr {
+					continue
+				}
+
+				res = append(res, &UTXOEntry{
+					TxID:   txID,
+					Vout:   uint32(vout),
+					Output: outputs[vout],
+				})
+			}
+		}
 	}
 
 	return res, nil
 }
 
 func (u *Store[T]) GetOutputsByTxID(
-	_ context.Context,
+	ctx context.Context,
 	txID string,
 ) ([]*TransactionOutput, error) {
 	var outputs []*TransactionOutput
 
-	ok, err := u.s.Get(newTransactionIDKey(u.dbVer, txID).String(), &outputs)
+	ok, err := u.s.Get(ctx, newTransactionIDKey(u.dbVer, txID).String(), &outputs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get outputs: %w", err)
 	}
@@ -211,21 +221,21 @@ func (u *Store[T]) GetOutputsByTxID(
 }
 
 func (u *Store[T]) SpendOutputFromRetrievedOutputs(
-	_ context.Context,
+	ctx context.Context,
 	txID string,
 	outputs []*TransactionOutput,
 	idx int,
 ) ([]string, *TransactionOutput, error) {
 
-	return u.spendOutput(txID, idx, outputs)
+	return u.spendOutput(ctx, txID, idx, outputs)
 }
 
 func (u *Store[T]) SpendAllOutputs(
-	_ context.Context,
+	ctx context.Context,
 	txID string,
 ) error {
 	var txOutputsKey = newTransactionIDKey(u.dbVer, txID)
-	if err := u.s.Delete(txOutputsKey.String()); err != nil {
+	if err := u.s.Delete(ctx, txOutputsKey.String()); err != nil {
 		return fmt.Errorf("delete outputs error: %w", err)
 	}
 
@@ -233,14 +243,14 @@ func (u *Store[T]) SpendAllOutputs(
 }
 
 func (u *Store[T]) SpendOutput(
-	_ context.Context,
+	ctx context.Context,
 	txID string,
 	idx int,
 ) ([]string, *TransactionOutput, error) {
 	var outputs []*TransactionOutput
 	var txOutputsKey = newTransactionIDKey(u.dbVer, txID)
 
-	found, err := u.s.Get(txOutputsKey.String(), &outputs)
+	found, err := u.s.Get(ctx, txOutputsKey.String(), &outputs)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get transaction outputs: %w", err)
 	}
@@ -249,10 +259,11 @@ func (u *Store[T]) SpendOutput(
 		return nil, nil, ErrNotFound
 	}
 
-	return u.spendOutput(txID, idx, outputs)
+	return u.spendOutput(ctx, txID, idx, outputs)
 }
 
 func (u *Store[T]) spendOutput(
+	ctx context.Context,
 	txID string,
 	idx int,
 	outputs []*TransactionOutput,
@@ -308,12 +319,12 @@ func (u *Store[T]) spendOutput(
 
 	// There is no left unpent outputs
 	if allSpent {
-		err := u.s.Delete(txOutputsKey.String())
+		err := u.s.Delete(ctx, txOutputsKey.String())
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to delete transaction id key: %w", err)
 		}
 	} else {
-		err := u.s.Set(txOutputsKey.String(), outputs)
+		err := u.s.Set(ctx, txOutputsKey.String(), outputs)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to set transaction id key: %w", err)
 		}
@@ -327,7 +338,7 @@ func (u *Store[T]) UpgradeTransactionOutputs(
 	txID string,
 	newOutputs []*TransactionOutput,
 ) error {
-	err := u.setNewTxOutputs(txID, newOutputs)
+	err := u.setNewTxOutputs(ctx, txID, newOutputs)
 	if err != nil {
 		return err
 	}
@@ -342,7 +353,7 @@ func (u *Store[T]) AreExiststsOutputs(
 	var outputs []any
 	var txOutputsKey = newTransactionIDKey(u.dbVer, txID)
 
-	found, err := u.s.Get(txOutputsKey.String(), &outputs)
+	found, err := u.s.Get(ctx, txOutputsKey.String(), &outputs)
 	if err != nil {
 		return false, fmt.Errorf("failed to get transaction outputs: %w", err)
 	}
@@ -355,12 +366,12 @@ func (u *Store[T]) AddTransactionOutputs(
 	txID string,
 	outputs []*TransactionOutput,
 ) error {
-	err := u.setNewTxOutputs(txID, outputs)
+	err := u.setNewTxOutputs(ctx, txID, outputs)
 	if err != nil {
 		return err
 	}
 
-	err = u.createAddressUTXOTxIdIndex(txID, outputs)
+	err = u.createAddressUTXOTxIdIndex(ctx, txID, outputs)
 	if err != nil {
 		return err
 	}
@@ -368,10 +379,10 @@ func (u *Store[T]) AddTransactionOutputs(
 	return nil
 }
 
-func (u *Store[T]) setNewTxOutputs(txID string, outputs []*TransactionOutput) error {
+func (u *Store[T]) setNewTxOutputs(ctx context.Context, txID string, outputs []*TransactionOutput) error {
 	txOutputsKey := newTransactionIDKey(u.dbVer, txID)
 
-	err := u.s.Set(txOutputsKey.String(), outputs)
+	err := u.s.Set(ctx, txOutputsKey.String(), outputs)
 	if err != nil {
 		return fmt.Errorf("failed to store tx outputs: %w", err)
 	}
@@ -379,7 +390,7 @@ func (u *Store[T]) setNewTxOutputs(txID string, outputs []*TransactionOutput) er
 	return nil
 }
 
-func (u *Store[T]) createAddressUTXOTxIdIndex(txID string, outputs []*TransactionOutput) error {
+func (u *Store[T]) createAddressUTXOTxIdIndex(ctx context.Context, txID string, outputs []*TransactionOutput) error {
 	txIDsByAdddress := map[string][]string{}
 	for _, output := range outputs {
 		if output == nil {
@@ -398,7 +409,7 @@ func (u *Store[T]) createAddressUTXOTxIdIndex(txID string, outputs []*Transactio
 	}
 
 	for address, txIDs := range txIDsByAdddress {
-		err := u.addressUTXOIds.addAddressUTXOTransactionIds(address, txIDs)
+		err := u.addressUTXOIds.addAddressUTXOTransactionIds(ctx, address, txIDs)
 		if err != nil {
 			return err
 		}

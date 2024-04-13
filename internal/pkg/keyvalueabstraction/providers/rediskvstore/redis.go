@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/encoding"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
@@ -26,9 +27,7 @@ func New(redis redis.Cmdable) *RedisStore {
 }
 
 // Delete implements keyvaluestore.StoreWithTxManager.
-func (r *RedisStore) Delete(key string) error {
-	ctx := context.TODO()
-
+func (r *RedisStore) Delete(ctx context.Context, key string) error {
 	if err := r.redis.Del(ctx, key).Err(); err != nil {
 		return fmt.Errorf("delete error: %w", err)
 	}
@@ -37,9 +36,7 @@ func (r *RedisStore) Delete(key string) error {
 }
 
 // Get implements keyvaluestore.StoreWithTxManager.
-func (r *RedisStore) Get(key string, v any) (found bool, err error) {
-	ctx := context.TODO()
-
+func (r *RedisStore) Get(ctx context.Context, key string, v any) (found bool, err error) {
 	res, err := r.redis.Get(ctx, key).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -58,12 +55,11 @@ func (r *RedisStore) Get(key string, v any) (found bool, err error) {
 }
 
 // ListKeys implements keyvaluestore.StoreWithTxManager.
-func (r *RedisStore) ListKeys(match string, si func(key string, getValue func(v interface{}) error) (ok bool, err error)) error {
+func (r *RedisStore) ListKeys(ctx context.Context, match string, si func(key string, getValue func(v interface{}) error) (ok bool, err error)) error {
 	if match == "" {
 		match = "*"
 	}
 
-	ctx := context.Background()
 	iter := r.redis.Scan(ctx, 0, match, 0).Iterator()
 
 	for iter.Next(ctx) {
@@ -100,13 +96,11 @@ func (r *RedisStore) ListKeys(match string, si func(key string, getValue func(v 
 }
 
 // Set implements keyvaluestore.StoreWithTxManager.
-func (r *RedisStore) Set(key string, v any) error {
+func (r *RedisStore) Set(ctx context.Context, key string, v any) error {
 	val, err := r.encode.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("encode error: %w", err)
 	}
-
-	ctx := context.Background()
 
 	err = r.redis.Set(ctx, key, string(val), redis.KeepTTL).Err()
 	if err != nil {
@@ -125,14 +119,43 @@ func (r *RedisStore) WithTx(tx txmanager.Transaction[redis.Pipeliner]) (keyvalue
 }
 
 func (r *RedisStore) DeleteByPattern(ctx context.Context, pattern string) error {
-	return r.ListKeys(pattern, func(key string, getValue func(v interface{}) error) (ok bool, err error) {
-		return false, r.Delete(key)
+	return r.ListKeys(ctx, pattern, func(key string, getValue func(v interface{}) error) (ok bool, err error) {
+		return false, r.Delete(ctx, key)
 	})
 }
 
 func (r *RedisStore) Flush(ctx context.Context) error {
 	if err := r.redis.FlushAll(ctx).Err(); err != nil {
 		return fmt.Errorf("fialed to flush: %w", err)
+	}
+
+	return nil
+}
+
+func (r *RedisStore) MulGet(ctx context.Context, allocValue func(ctx context.Context, key string) any, keys ...string) error {
+	if allocValue == nil {
+		return fmt.Errorf("alloca value function is nil")
+	}
+
+	values := r.redis.MGet(ctx, keys...).Val()
+	for i, val := range values {
+		key := keys[i]
+
+		valPtr := allocValue(ctx, key)
+
+		if val == nil {
+			continue
+		}
+
+		switch t := val.(type) {
+		case string:
+			if err := r.encode.Unmarshal([]byte(t), valPtr); err != nil {
+				return fmt.Errorf("unmarshal value error: %w", err)
+			}
+		default:
+			return fmt.Errorf("unknown value type: %v (%v): %v", t, reflect.TypeOf(t), val)
+		}
+
 	}
 
 	return nil

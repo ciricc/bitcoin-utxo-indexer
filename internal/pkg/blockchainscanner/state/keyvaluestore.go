@@ -26,7 +26,7 @@ func NewStateWithKeyValueStore(
 
 func (s *KeyValueScannerState) UpdateLastScannedBlockHash(ctx context.Context, hash string) error {
 
-	if err := s.store.Set("lastScannedBlockHash", hash); err != nil {
+	if err := s.store.Set(ctx, "lastScannedBlockHash", hash); err != nil {
 		return fmt.Errorf("faild to set lastScannedBlockHash: %w", err)
 	}
 
@@ -35,7 +35,7 @@ func (s *KeyValueScannerState) UpdateLastScannedBlockHash(ctx context.Context, h
 
 func (s *KeyValueScannerState) GetLastScannedBlockHash(ctx context.Context) (string, error) {
 	var hash string
-	found, err := s.store.Get("lastScannedBlockHash", &hash)
+	found, err := s.store.Get(ctx, "lastScannedBlockHash", &hash)
 	if err != nil {
 		return "", fmt.Errorf("faild to get lastScannedBlockHash: %w", err)
 	}

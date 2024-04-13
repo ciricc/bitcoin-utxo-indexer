@@ -8,16 +8,19 @@ import (
 
 type Store interface {
 	// Get retrieves the value for the given key.
-	Get(key string, v any) (found bool, err error)
+	Get(ctx context.Context, key string, v any) (found bool, err error)
+
+	// MulGet retrievels the values for the given keys
+	MulGet(ctx context.Context, allocValue func(ctx context.Context, key string) any, keys ...string) error
 
 	// Set sets the key to the given value.
-	Set(key string, v any) error
+	Set(ctx context.Context, key string, v any) error
 
 	// Delete deletes the key from the store.
-	Delete(key string) error
+	Delete(ctx context.Context, key string) error
 
 	// ListKeys iterates over all keys in the store and calls the given function for each key.
-	ListKeys(match string, si func(key string, getValue func(v interface{}) error) (stop bool, err error)) error
+	ListKeys(ctx context.Context, match string, si func(key string, getValue func(v interface{}) error) (stop bool, err error)) error
 
 	// Flush deletes all keys
 	Flush(ctx context.Context) error

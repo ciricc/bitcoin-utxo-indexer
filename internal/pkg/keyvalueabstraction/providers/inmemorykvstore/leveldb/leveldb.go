@@ -45,7 +45,7 @@ func NewLevelDBStore(db LevelDB) (*LevelDBStore, error) {
 	}, nil
 }
 
-func (l *LevelDBStore) Get(key string, v any) (found bool, err error) {
+func (l *LevelDBStore) Get(_ context.Context, key string, v any) (found bool, err error) {
 	val, err := l.db.Get([]byte(key), nil)
 	if err != nil {
 		if errors.Is(err, leveldb.ErrNotFound) {
@@ -62,7 +62,7 @@ func (l *LevelDBStore) Get(key string, v any) (found bool, err error) {
 	return true, nil
 }
 
-func (l *LevelDBStore) Set(key string, v any) error {
+func (l *LevelDBStore) Set(_ context.Context, key string, v any) error {
 	value, err := l.encoding.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("failed to encode value: %w", err)
@@ -76,7 +76,7 @@ func (l *LevelDBStore) Set(key string, v any) error {
 	return nil
 }
 
-func (l *LevelDBStore) Delete(key string) error {
+func (l *LevelDBStore) Delete(_ context.Context, key string) error {
 	err := l.db.Delete([]byte(key), nil)
 	if err != nil {
 		return fmt.Errorf("failed to delete the key: %w", err)
@@ -92,7 +92,7 @@ func (l *LevelDBStore) WithTx(tx txmanager.Transaction[*leveldb.Transaction]) (k
 	}, nil
 }
 
-func (l *LevelDBStore) ListKeys(match string, si func(key string, getValue func(v interface{}) error) (ok bool, err error)) error {
+func (l *LevelDBStore) ListKeys(_ context.Context, match string, si func(key string, getValue func(v interface{}) error) (ok bool, err error)) error {
 	iterator := l.db.NewIterator(nil, nil)
 	defer iterator.Release()
 
@@ -126,10 +126,14 @@ func (l *LevelDBStore) DeleteByPattern(_ context.Context, pattern string) error 
 	return fmt.Errorf("unimplemented")
 }
 
-func (l *LevelDBStore) Flush(_ context.Context) error {
-	return l.ListKeys("", func(key string, getValue func(v interface{}) error) (ok bool, err error) {
+func (l *LevelDBStore) Flush(ctx context.Context) error {
+	return l.ListKeys(ctx, "", func(key string, getValue func(v interface{}) error) (ok bool, err error) {
 		return false, l.db.Delete([]byte(key), nil)
 	})
+}
+
+func (r *LevelDBStore) MulGet(ctx context.Context, allocValue func(ctx context.Context, key string) any, keys ...string) error {
+	return fmt.Errorf("unimplemented mulget")
 }
 
 var _ keyvaluestore.StoreWithTxManager[*leveldb.Transaction] = (*LevelDBStore)(nil)

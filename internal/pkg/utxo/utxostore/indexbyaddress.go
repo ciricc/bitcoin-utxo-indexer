@@ -19,10 +19,10 @@ func newAddressUTXOIndex[T any](databaseVersion string, sets sets.SetsWithTxMana
 	}
 }
 
-func (u *redisAddressUTXOIdx[T]) deleteAdressUTXOTransactionIds(address string, txIDs []string) error {
+func (u *redisAddressUTXOIdx[T]) deleteAdressUTXOTransactionIds(ctx context.Context, address string, txIDs []string) error {
 	addressUTXOTxIDsKey := newAddressUTXOTxIDsSetKey(u.dbVer, address)
 
-	err := u.s.RemoveFromSet(context.Background(), addressUTXOTxIDsKey.String(), txIDs...)
+	err := u.s.RemoveFromSet(ctx, addressUTXOTxIDsKey.String(), txIDs...)
 	if err != nil {
 		return fmt.Errorf("failed to delete address UTXO tx ids: %w", err)
 	}
@@ -30,9 +30,9 @@ func (u *redisAddressUTXOIdx[T]) deleteAdressUTXOTransactionIds(address string, 
 	return nil
 }
 
-func (i *redisAddressUTXOIdx[T]) getAddressUTXOTransactionIds(address string) ([]string, error) {
+func (i *redisAddressUTXOIdx[T]) getAddressUTXOTransactionIds(ctx context.Context, address string) ([]string, error) {
 	addressUTXOTxIDsKey := newAddressUTXOTxIDsSetKey(i.dbVer, address)
-	txIds, err := i.s.GetSet(context.Background(), addressUTXOTxIDsKey.String())
+	txIds, err := i.s.GetSet(ctx, addressUTXOTxIDsKey.String())
 	if err != nil {
 		return nil, fmt.Errorf("get address UTXO tx ids set error: %w", err)
 	}
@@ -41,10 +41,11 @@ func (i *redisAddressUTXOIdx[T]) getAddressUTXOTransactionIds(address string) ([
 }
 
 func (i *redisAddressUTXOIdx[T]) addAddressUTXOTransactionIds(
+	ctx context.Context,
 	address string,
 	txIDs []string,
 ) error {
-	err := i.s.AddToSet(context.Background(), newAddressUTXOTxIDsSetKey(i.dbVer, address).String(), txIDs...)
+	err := i.s.AddToSet(ctx, newAddressUTXOTxIDsSetKey(i.dbVer, address).String(), txIDs...)
 	if err != nil {
 		return fmt.Errorf("failed to add address UTXO tx ids: %w", err)
 	}
