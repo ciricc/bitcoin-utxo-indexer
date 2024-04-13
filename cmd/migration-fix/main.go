@@ -101,9 +101,6 @@ func main() {
 		}
 
 		keyI++
-		// if currentUTXO.GetTxID() != "78d898a678b475aa464ca77d2250bf1eeb89fe777198d7d5bccf47d15e4e6002" && currentTxID != "78d898a678b475aa464ca77d2250bf1eeb89fe777198d7d5bccf47d15e4e6002" {
-		// 	continue
-		// }
 
 		if currentTxID != currentUTXO.GetTxID() {
 			if len(currentUTXOs) > 0 {

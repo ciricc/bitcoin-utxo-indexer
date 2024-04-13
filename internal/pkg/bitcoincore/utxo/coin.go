@@ -1,7 +1,6 @@
 package utxo
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -93,27 +92,9 @@ func (c *Coin) Deserialize(coinBuffer BytesBuffer) error {
 	}
 
 	c.out = wire.NewTxOut(
-		int64(amount),
-		// int64(utxocompression.DecompressTxOutAmount(amount)),
+		int64(utxocompression.DecompressTxOutAmount(amount)),
 		utxocompression.DecompressScript(scriptType, pkScript),
 	)
 
 	return nil
-}
-
-// readUvarint32 reads an unsigned varint from r and returns it as uint32.
-func readUvarint32(r io.ByteReader) (uint32, error) {
-	// Use binary.ReadUvarint to read the varint as uint64.
-	uv, err := binary.ReadUvarint(r)
-	if err != nil {
-		return 0, err // Propagate errors (e.g., EOF or malformed varint).
-	}
-
-	// Check if the read value fits into uint32.
-	if uv > 0xFFFFFFFF {
-		return 0, fmt.Errorf("value %d overflows uint32", uv)
-	}
-
-	// Cast the uint64 to uint32 safely and return.
-	return uint32(uv), nil
 }
