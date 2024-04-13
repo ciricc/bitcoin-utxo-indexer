@@ -7,6 +7,6 @@ import (
 )
 
 func TestDecompressAmount(t *testing.T) {
-	decompressedAmount := DecompressTxOutAmount(80643)
-	require.Equal(t, uint64(0), int64(decompressedAmount))
+	decompressedAmount := DecompressTxOutAmount(80772)
+	require.Equal(t, uint64(89750), decompressedAmount)
 }

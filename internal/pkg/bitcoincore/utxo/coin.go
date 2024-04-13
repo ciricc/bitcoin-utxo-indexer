@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 
 	"github.com/btcsuite/btcd/wire"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/binaryutils"
@@ -93,7 +92,6 @@ func (c *Coin) Deserialize(coinBuffer BytesBuffer) error {
 		return err
 	}
 
-	log.Println("raw amount", amount)
 	c.out = wire.NewTxOut(
 		int64(amount),
 		// int64(utxocompression.DecompressTxOutAmount(amount)),
