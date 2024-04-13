@@ -57,7 +57,7 @@ func (c *Coin) Deserialize(coinBuffer BytesBuffer) error {
 	c.isCoinBase = code&1 == 1
 
 	// reading varint amount in satoshi
-	amount, err := binary.ReadUvarint(coinBuffer)
+	amount, _, err := binaryutils.DeserializeVLQ(coinBuffer)
 	if err != nil {
 		return err
 	}
