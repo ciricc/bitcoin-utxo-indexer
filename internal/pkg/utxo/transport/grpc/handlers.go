@@ -8,6 +8,7 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/pkg/api/grpc/UTXO"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type UTXOService interface {
@@ -37,7 +38,7 @@ func New(service UTXOService, btcConfig BitcoinConfig) *UTXOGrpcHandlers {
 
 func (u *UTXOGrpcHandlers) GetBlockHeight(
 	ctx context.Context,
-	_ *UTXO.GetBlockHeightRequest,
+	_ *emptypb.Empty,
 ) (*UTXO.GetBlockHeightResponse, error) {
 	height, err := u.s.GetBlockHeight(ctx)
 	if err != nil {
@@ -49,11 +50,30 @@ func (u *UTXOGrpcHandlers) GetBlockHeight(
 	}, nil
 }
 
+func (u *UTXOGrpcHandlers) TotalAmountByAddress(
+	ctx context.Context,
+	address *UTXO.Address,
+) (*UTXO.Amount, error) {
+	outputs, err := u.s.GetUTXOByBase58Address(ctx, address.Base58)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "failed to get outputs")
+	}
+
+	var totalAmount uint64
+	for _, output := range outputs {
+		totalAmount += output.Output.GetAmount()
+	}
+
+	return &UTXO.Amount{
+		Value: totalAmount,
+	}, nil
+}
+
 func (u *UTXOGrpcHandlers) GetByAddress(
 	ctx context.Context,
-	req *UTXO.GetByAddressRequest,
-) (*UTXO.GetByAddressResponse, error) {
-	outputs, err := u.s.GetUTXOByBase58Address(ctx, req.Address)
+	address *UTXO.Address,
+) (*UTXO.TransactionOutputs, error) {
+	outputs, err := u.s.GetUTXOByBase58Address(ctx, address.Base58)
 	if err != nil {
 		return nil, status.Errorf(
 			codes.Internal,
@@ -61,24 +81,21 @@ func (u *UTXOGrpcHandlers) GetByAddress(
 		)
 	}
 
-	m := make([]*UTXO.UnspentTransactionOutput, 0, len(outputs))
+	m := make([]*UTXO.TransactionOutput, 0, len(outputs))
 
 	for _, output := range outputs {
 		scriptBytes := output.Output.GetScriptBytes()
-		amount, err := output.Output.GetAmountFloat64(u.bitcoinConfig.GetDecimals())
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "failed to get utxo amount")
-		}
-
-		m = append(m, &UTXO.UnspentTransactionOutput{
-			TxId:         output.TxID,
-			Amount:       amount.String(),
+		m = append(m, &UTXO.TransactionOutput{
+			TxId: output.TxID,
+			Amount: &UTXO.Amount{
+				Value: output.Output.GetAmount(),
+			},
 			ScriptPubKey: hex.EncodeToString(scriptBytes),
 			Index:        int32(output.Vout),
 		})
 	}
 
-	return &UTXO.GetByAddressResponse{
-		UnspentOutputs: m,
+	return &UTXO.TransactionOutputs{
+		Items: m,
 	}, nil
 }

@@ -8,6 +8,7 @@ package UTXO
 
 import (
 	context "context"
+	empty "github.com/golang/protobuf/ptypes/empty"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -19,18 +20,21 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	UTXO_GetByAddress_FullMethodName   = "/UTXO/GetByAddress"
-	UTXO_GetBlockHeight_FullMethodName = "/UTXO/GetBlockHeight"
+	UTXO_ListByAddress_FullMethodName        = "/UTXO/ListByAddress"
+	UTXO_GetBlockHeight_FullMethodName       = "/UTXO/GetBlockHeight"
+	UTXO_TotalAmountByAddress_FullMethodName = "/UTXO/TotalAmountByAddress"
 )
 
 // UTXOClient is the client API for UTXO service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type UTXOClient interface {
-	// GetByAddress returns list of UTXO by address
-	GetByAddress(ctx context.Context, in *GetByAddressRequest, opts ...grpc.CallOption) (*GetByAddressResponse, error)
+	// ListByAddress returns list of UTXO by address
+	ListByAddress(ctx context.Context, in *Address, opts ...grpc.CallOption) (*TransactionOutputs, error)
 	// GetBlockHeight returns the number of the block last synced with in UTXO storage
-	GetBlockHeight(ctx context.Context, in *GetBlockHeightRequest, opts ...grpc.CallOption) (*GetBlockHeightResponse, error)
+	GetBlockHeight(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*GetBlockHeightResponse, error)
+	// TotalAmount returns a total amount of unspent outputs by address
+	TotalAmountByAddress(ctx context.Context, in *Address, opts ...grpc.CallOption) (*Amount, error)
 }
 
 type uTXOClient struct {
@@ -41,18 +45,27 @@ func NewUTXOClient(cc grpc.ClientConnInterface) UTXOClient {
 	return &uTXOClient{cc}
 }
 
-func (c *uTXOClient) GetByAddress(ctx context.Context, in *GetByAddressRequest, opts ...grpc.CallOption) (*GetByAddressResponse, error) {
-	out := new(GetByAddressResponse)
-	err := c.cc.Invoke(ctx, UTXO_GetByAddress_FullMethodName, in, out, opts...)
+func (c *uTXOClient) ListByAddress(ctx context.Context, in *Address, opts ...grpc.CallOption) (*TransactionOutputs, error) {
+	out := new(TransactionOutputs)
+	err := c.cc.Invoke(ctx, UTXO_ListByAddress_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *uTXOClient) GetBlockHeight(ctx context.Context, in *GetBlockHeightRequest, opts ...grpc.CallOption) (*GetBlockHeightResponse, error) {
+func (c *uTXOClient) GetBlockHeight(ctx context.Context, in *empty.Empty, opts ...grpc.CallOption) (*GetBlockHeightResponse, error) {
 	out := new(GetBlockHeightResponse)
 	err := c.cc.Invoke(ctx, UTXO_GetBlockHeight_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *uTXOClient) TotalAmountByAddress(ctx context.Context, in *Address, opts ...grpc.CallOption) (*Amount, error) {
+	out := new(Amount)
+	err := c.cc.Invoke(ctx, UTXO_TotalAmountByAddress_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -63,10 +76,12 @@ func (c *uTXOClient) GetBlockHeight(ctx context.Context, in *GetBlockHeightReque
 // All implementations must embed UnimplementedUTXOServer
 // for forward compatibility
 type UTXOServer interface {
-	// GetByAddress returns list of UTXO by address
-	GetByAddress(context.Context, *GetByAddressRequest) (*GetByAddressResponse, error)
+	// ListByAddress returns list of UTXO by address
+	ListByAddress(context.Context, *Address) (*TransactionOutputs, error)
 	// GetBlockHeight returns the number of the block last synced with in UTXO storage
-	GetBlockHeight(context.Context, *GetBlockHeightRequest) (*GetBlockHeightResponse, error)
+	GetBlockHeight(context.Context, *empty.Empty) (*GetBlockHeightResponse, error)
+	// TotalAmount returns a total amount of unspent outputs by address
+	TotalAmountByAddress(context.Context, *Address) (*Amount, error)
 	mustEmbedUnimplementedUTXOServer()
 }
 
@@ -74,11 +89,14 @@ type UTXOServer interface {
 type UnimplementedUTXOServer struct {
 }
 
-func (UnimplementedUTXOServer) GetByAddress(context.Context, *GetByAddressRequest) (*GetByAddressResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetByAddress not implemented")
+func (UnimplementedUTXOServer) ListByAddress(context.Context, *Address) (*TransactionOutputs, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListByAddress not implemented")
 }
-func (UnimplementedUTXOServer) GetBlockHeight(context.Context, *GetBlockHeightRequest) (*GetBlockHeightResponse, error) {
+func (UnimplementedUTXOServer) GetBlockHeight(context.Context, *empty.Empty) (*GetBlockHeightResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBlockHeight not implemented")
+}
+func (UnimplementedUTXOServer) TotalAmountByAddress(context.Context, *Address) (*Amount, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TotalAmountByAddress not implemented")
 }
 func (UnimplementedUTXOServer) mustEmbedUnimplementedUTXOServer() {}
 
@@ -93,26 +111,26 @@ func RegisterUTXOServer(s grpc.ServiceRegistrar, srv UTXOServer) {
 	s.RegisterService(&UTXO_ServiceDesc, srv)
 }
 
-func _UTXO_GetByAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetByAddressRequest)
+func _UTXO_ListByAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Address)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(UTXOServer).GetByAddress(ctx, in)
+		return srv.(UTXOServer).ListByAddress(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: UTXO_GetByAddress_FullMethodName,
+		FullMethod: UTXO_ListByAddress_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(UTXOServer).GetByAddress(ctx, req.(*GetByAddressRequest))
+		return srv.(UTXOServer).ListByAddress(ctx, req.(*Address))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _UTXO_GetBlockHeight_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetBlockHeightRequest)
+	in := new(empty.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -124,7 +142,25 @@ func _UTXO_GetBlockHeight_Handler(srv interface{}, ctx context.Context, dec func
 		FullMethod: UTXO_GetBlockHeight_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(UTXOServer).GetBlockHeight(ctx, req.(*GetBlockHeightRequest))
+		return srv.(UTXOServer).GetBlockHeight(ctx, req.(*empty.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UTXO_TotalAmountByAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Address)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UTXOServer).TotalAmountByAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UTXO_TotalAmountByAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UTXOServer).TotalAmountByAddress(ctx, req.(*Address))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -137,12 +173,16 @@ var UTXO_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*UTXOServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "GetByAddress",
-			Handler:    _UTXO_GetByAddress_Handler,
+			MethodName: "ListByAddress",
+			Handler:    _UTXO_ListByAddress_Handler,
 		},
 		{
 			MethodName: "GetBlockHeight",
 			Handler:    _UTXO_GetBlockHeight_Handler,
+		},
+		{
+			MethodName: "TotalAmountByAddress",
+			Handler:    _UTXO_TotalAmountByAddress_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

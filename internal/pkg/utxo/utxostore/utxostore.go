@@ -3,10 +3,12 @@ package utxostore
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
+	"golang.org/x/sync/errgroup"
 )
 
 type Store[T any] struct {
@@ -130,46 +132,61 @@ func (u *Store[T]) GetUnspentOutputsByAddress(_ context.Context, address string)
 		return nil, nil
 	}
 
-	var res []*UTXOEntry
+	resMx := sync.Mutex{}
+	res := []*UTXOEntry{}
+
+	errGroup := errgroup.Group{}
 
 	for _, txID := range txIDsWithOutputs {
-		var outputs []*TransactionOutput
+		txID := txID
+		errGroup.Go(func() error {
+			var outputs []*TransactionOutput
 
-		found, err := u.s.Get(newTransactionIDKey(u.dbVer, txID).String(), &outputs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get outputs: %w", err)
-		}
-
-		if !found {
-			continue
-		}
-
-		for vout, output := range outputs {
-			if !isSpentOutput(output) {
-				addresses, err := output.GetAddresses()
-				if err != nil {
-					return nil, fmt.Errorf("failed to get addresses: %w", err)
-				}
-				foundAddr := false
-
-				for _, addr := range addresses {
-					if address == addr {
-						foundAddr = true
-						break
-					}
-				}
-
-				if !foundAddr {
-					continue
-				}
-
-				res = append(res, &UTXOEntry{
-					TxID:   txID,
-					Vout:   uint32(vout),
-					Output: outputs[vout],
-				})
+			found, err := u.s.Get(newTransactionIDKey(u.dbVer, txID).String(), &outputs)
+			if err != nil {
+				return fmt.Errorf("failed to get outputs: %w", err)
 			}
-		}
+
+			if !found {
+				return nil
+			}
+
+			for vout, output := range outputs {
+				if !isSpentOutput(output) {
+					addresses, err := output.GetAddresses()
+					if err != nil {
+						return fmt.Errorf("failed to get addresses: %w", err)
+					}
+
+					foundAddr := false
+
+					for _, addr := range addresses {
+						if address == addr {
+							foundAddr = true
+							break
+						}
+					}
+
+					if !foundAddr {
+						continue
+					}
+
+					resMx.Lock()
+					res = append(res, &UTXOEntry{
+						TxID:   txID,
+						Vout:   uint32(vout),
+						Output: outputs[vout],
+					})
+					resMx.Unlock()
+				}
+			}
+			return nil
+		})
+	}
+
+	err = errGroup.Wait()
+	if err != nil {
+		return nil, err
 	}
 
 	return res, nil
