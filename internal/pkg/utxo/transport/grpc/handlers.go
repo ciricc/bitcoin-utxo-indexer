@@ -24,15 +24,13 @@ type BitcoinConfig interface {
 type UTXOGrpcHandlers struct {
 	UTXO.UnimplementedUTXOServer
 
-	s             UTXOService
-	bitcoinConfig BitcoinConfig
+	s UTXOService
 }
 
-func New(service UTXOService, btcConfig BitcoinConfig) *UTXOGrpcHandlers {
+func New(service UTXOService) *UTXOGrpcHandlers {
 	return &UTXOGrpcHandlers{
 		UnimplementedUTXOServer: UTXO.UnimplementedUTXOServer{},
 		s:                       service,
-		bitcoinConfig:           btcConfig,
 	}
 }
 

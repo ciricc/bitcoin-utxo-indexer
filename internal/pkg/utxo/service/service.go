@@ -108,6 +108,11 @@ func (u *Service[T, _]) GetUTXOByBase58Address(ctx context.Context, address stri
 
 	outputs, err := u.s.GetUnspentOutputsByAddress(ctx, hex.EncodeToString(btcAddr.ScriptAddress()))
 	if err != nil {
+		u.logger.Error().
+			Err(err).
+			Str("addr", hexAddr).
+			Msg("failed to get unspent outputs by address")
+
 		return nil, fmt.Errorf("failed to get UTXO by address: %w", err)
 	}
 
