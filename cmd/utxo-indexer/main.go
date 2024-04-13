@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"time"
 
 	"github.com/ciricc/btc-utxo-indexer/config"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/app"
@@ -223,12 +222,6 @@ func initUptrace(utxoContainer *do.Injector) error {
 		uptrace.WithServiceVersion(cfg.Version),
 		uptrace.WithDeploymentEnvironment(cfg.Environment),
 	)
-
-	go func() {
-
-		uptrace.ForceFlush(context.Background())
-		time.Sleep(time.Second)
-	}()
 
 	return nil
 }
