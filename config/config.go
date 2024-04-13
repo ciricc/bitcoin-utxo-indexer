@@ -66,6 +66,10 @@ type Config struct {
 			} `yaml:"redis"`
 		} `yaml:"storage"`
 	} `yaml:"utxo"`
+
+	Uptrace struct {
+		DSN string `yaml:"dsn"`
+	} `yaml:"uptrace"`
 }
 
 func (c Config) Validate() error {
@@ -111,6 +115,13 @@ func (c Config) Validate() error {
 		validation.Field(&c.BlockchainBlocksIterator.ConcurrentBlocksDownloadLimit, validation.Required, validation.Min(1)),
 	); err != nil {
 		return fmt.Errorf("failed to validate blockchainBlocksIterator options: %w", err)
+	}
+
+	if err := validation.ValidateStruct(
+		&c.Uptrace,
+		validation.Field(&c.Uptrace.DSN, is.URL),
+	); err != nil {
+		return fmt.Errorf("failed to validate uptrace options: %w", err)
 	}
 
 	if err := validation.ValidateStruct(

@@ -40,6 +40,7 @@ import (
 	"github.com/samber/do"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -459,7 +460,9 @@ func NewGRPCServer(i *do.Injector) (*grpc.Server, error) {
 		return nil, fmt.Errorf("failed to invoke UTXO grpc handlers: %w", err)
 	}
 
-	server := grpc.NewServer()
+	server := grpc.NewServer(
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+	)
 
 	UTXO.RegisterUTXOServer(server, utxoHandlers)
 	reflection.Register(server)

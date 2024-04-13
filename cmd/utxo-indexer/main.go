@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	"github.com/ciricc/btc-utxo-indexer/config"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/app"
@@ -20,9 +21,11 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/restclient"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
+	"github.com/uptrace/uptrace-go/uptrace"
 	"google.golang.org/grpc"
 )
 
@@ -49,6 +52,10 @@ func main() {
 	app.ProvideBitcoinCoreDeps(utxoContainer)
 	app.ProvideUTXOStoreDeps(utxoContainer)
 	app.ProvideUTXOServiceDeps(utxoContainer)
+
+	if err := initUptrace(utxoContainer); err != nil {
+		logger.Fatal().Err(err).Msg("failed to init uptrace tracing")
+	}
 
 	if err := runUTXOGRPCServer(ctx, mainContainer, utxoContainer); err != nil {
 		logger.Fatal().Err(err).Msg("failed to run UTXO grpc server")
@@ -177,6 +184,51 @@ func runUTXOScanner(
 	} else {
 		logger.Warn().Msg("scanner is disabled")
 	}
+
+	return nil
+}
+
+func initUptrace(utxoContainer *do.Injector) error {
+	cfg, err := do.Invoke[*config.Config](utxoContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke the configuration: %w", err)
+	}
+
+	logger, err := do.Invoke[*zerolog.Logger](utxoContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke the logger: %w", err)
+	}
+
+	redisClient, err := do.Invoke[*redis.Client](utxoContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke redis client: %w", err)
+	}
+
+	if cfg.Uptrace.DSN == "" {
+		logger.Warn().Msg("uptrace DSN not configured, tracing disabled")
+		return nil
+	}
+
+	if err := redisotel.InstrumentTracing(redisClient); err != nil {
+		return fmt.Errorf("failed to init uptrace for redis client: %w", err)
+	}
+
+	if err := redisotel.InstrumentMetrics(redisClient); err != nil {
+		return fmt.Errorf("failed to init uptrace for redis client: %w", err)
+	}
+
+	uptrace.ConfigureOpentelemetry(
+		uptrace.WithDSN(cfg.Uptrace.DSN),
+		uptrace.WithServiceName(cfg.Name),
+		uptrace.WithServiceVersion(cfg.Version),
+		uptrace.WithDeploymentEnvironment(cfg.Environment),
+	)
+
+	go func() {
+
+		uptrace.ForceFlush(context.Background())
+		time.Sleep(time.Second)
+	}()
 
 	return nil
 }

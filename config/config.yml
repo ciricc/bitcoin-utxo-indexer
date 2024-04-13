@@ -53,3 +53,7 @@ utxo:
       db: 0
       # username: utxo
       # password: fEcONJORtFAr
+
+uptrace:
+  # DSN from the https://uptrace.dev
+  dsn: "https://LyF0N8RJffpO_YwFJJ5wIw@api.uptrace.dev?grpc=4317"
