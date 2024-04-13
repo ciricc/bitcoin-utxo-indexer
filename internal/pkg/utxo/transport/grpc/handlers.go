@@ -69,7 +69,7 @@ func (u *UTXOGrpcHandlers) TotalAmountByAddress(
 	}, nil
 }
 
-func (u *UTXOGrpcHandlers) GetByAddress(
+func (u *UTXOGrpcHandlers) ListByAddress(
 	ctx context.Context,
 	address *UTXO.Address,
 ) (*UTXO.TransactionOutputs, error) {
