@@ -16,16 +16,22 @@ type UTXOService interface {
 	GetBlockHeight(ctx context.Context) (int64, error)
 }
 
+type BitcoinConfig interface {
+	GetDecimals() int
+}
+
 type UTXOGrpcHandlers struct {
 	UTXO.UnimplementedUTXOServer
 
-	s UTXOService
+	s             UTXOService
+	bitcoinConfig BitcoinConfig
 }
 
-func New(service UTXOService) *UTXOGrpcHandlers {
+func New(service UTXOService, btcConfig BitcoinConfig) *UTXOGrpcHandlers {
 	return &UTXOGrpcHandlers{
 		UnimplementedUTXOServer: UTXO.UnimplementedUTXOServer{},
 		s:                       service,
+		bitcoinConfig:           btcConfig,
 	}
 }
 
@@ -59,9 +65,14 @@ func (u *UTXOGrpcHandlers) GetByAddress(
 
 	for _, output := range outputs {
 		scriptBytes := output.Output.GetScriptBytes()
+		amount, err := output.Output.GetAmountFloat64(u.bitcoinConfig.GetDecimals())
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get utxo amount")
+		}
+
 		m = append(m, &UTXO.UnspentTransactionOutput{
-			TxId: output.TxID,
-			// Amount:       output.Output.Amount.String(),
+			TxId:         output.TxID,
+			Amount:       amount.String(),
 			ScriptPubKey: hex.EncodeToString(scriptBytes),
 			Index:        int32(output.Vout),
 		})

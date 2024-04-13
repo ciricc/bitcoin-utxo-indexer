@@ -452,7 +452,12 @@ func GeUTXOGRPCHandlersConstructor[T any]() do.Provider[*grpchandlers.UTXOGrpcHa
 			return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
 		}
 
-		return grpchandlers.New(service), nil
+		bitcoinConfig, err := do.Invoke[*bitcoinconfig.BitcoinConfig](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke bitcoin config: %w", err)
+		}
+
+		return grpchandlers.New(service, bitcoinConfig), nil
 	}
 }
 

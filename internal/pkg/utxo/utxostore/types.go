@@ -3,11 +3,14 @@ package utxostore
 import (
 	"encoding/hex"
 	"fmt"
+	"math/big"
+	"strconv"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/bitcoincorecompression"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/utxocompression"
+	"github.com/shopspring/decimal"
 )
 
 type TransactionOutput struct {
@@ -21,6 +24,18 @@ func (t *TransactionOutput) SetAmount(amount uint64) {
 
 func (t *TransactionOutput) GetAmount() uint64 {
 	return utxocompression.DecompressTxOutAmount(t.CompressedAmount)
+}
+
+func (t *TransactionOutput) GetAmountFloat64(decimals int) (*big.Float, error) {
+	amountInt := t.GetAmount()
+	amountStr := strconv.FormatUint(amountInt, 10)
+
+	amount, err := decimal.NewFromString(amountStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert amount to decimal: %w", err)
+	}
+
+	return amount.Div(decimal.New(1, int32(decimals))).BigFloat(), nil
 }
 
 func (t *TransactionOutput) GetScriptBytes() []byte {
