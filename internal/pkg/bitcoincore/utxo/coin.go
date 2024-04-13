@@ -93,7 +93,8 @@ func (c *Coin) Deserialize(coinBuffer BytesBuffer) error {
 	}
 
 	c.out = wire.NewTxOut(
-		int64(utxocompression.DecompressTxOutAmount(amount)),
+		int64(amount),
+		// int64(utxocompression.DecompressTxOutAmount(amount)),
 		utxocompression.DecompressScript(scriptType, pkScript),
 	)
 
