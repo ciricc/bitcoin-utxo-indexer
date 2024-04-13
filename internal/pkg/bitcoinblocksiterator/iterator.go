@@ -3,7 +3,6 @@ package bitcoinblocksiterator
 import (
 	"context"
 	"fmt"
-	"slices"
 	"sync"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 
 type BlockchainRESTClient interface {
 	GetBlock(ctx context.Context, hash blockchain.Hash) (*blockchain.Block, error)
+	GetBlockHash(ctx context.Context, height int64) (*blockchain.Hash, error)
 	GetBlockHeader(ctx context.Context, hash blockchain.Hash) (*blockchain.BlockHeader, error)
 }
 
@@ -53,17 +53,22 @@ func (b *BitcoinBlocksIterator) Iterate(
 		return nil, fmt.Errorf("failed to parse start from block hash: %w", err)
 	}
 
-	headersCh := make(chan *blockchain.BlockHeader, b.opts.blockHeadersBufferSize)
+	blockHeader, err := b.restClient.GetBlockHeader(ctx, startFromBlockHashBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get start from block header: %w", err)
+	}
 
-	go b.downloadBlockHeaders(ctx, startFromBlockHashBytes, headersCh)
+	downloadBlockHashesCh := make(chan blockchain.Hash, b.opts.blockHeadersBufferSize)
 
-	return b.downloadBlocks(ctx, startFromBlockHashBytes, headersCh), nil
+	go b.downloadBlockHeaders(ctx, blockHeader.GetHeight(), downloadBlockHashesCh)
+
+	return b.downloadBlocks(ctx, startFromBlockHashBytes, downloadBlockHashesCh), nil
 }
 
 func (s *BitcoinBlocksIterator) downloadBlocks(
 	ctx context.Context,
 	startedFrom blockchain.Hash,
-	headersCh <-chan *blockchain.BlockHeader,
+	blockHashesToDownload <-chan blockchain.Hash,
 ) <-chan *blockchain.Block {
 	s.opts.logger.Info().
 		Str("startedFrom", startedFrom.String()).
@@ -90,12 +95,12 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 		// Limiting the number of concurrent goroutines to download the blocks
 		downloadBlocksSemaphore := semaphore.New(s.opts.concurrentBlocksDownloadLimit)
 
-		for header := range headersCh {
+		for blockHash := range blockHashesToDownload {
 			// Requesting a place fo the goroutine
 			downloadBlocksSemaphore.Acquire()
 
 			s.opts.logger.Info().
-				Str("hash", header.GetHash().String()).
+				Str("hash", blockHash.String()).
 				Msg("got new header, begin downloading the block")
 
 			go func() {
@@ -109,10 +114,10 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 					case <-ctx.Done():
 						return
 					default:
-						blockEntity, err := s.restClient.GetBlock(ctx, header.GetHash())
+						blockEntity, err := s.restClient.GetBlock(ctx, blockHash)
 						if err != nil {
 							s.opts.logger.Error().
-								Str("hash", header.GetHash().String()).
+								Str("hash", blockHash.String()).
 								Dur("waitFor", s.opts.waitAfterErrorDuration).
 								Err(err).
 								Msg(
@@ -131,7 +136,7 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 
 				s.opts.logger.Info().
 					Str("hash", block.GetHash().String()).
-					Str("headerHash", header.GetHash().String()).
+					Str("headerHash", blockHash.String()).
 					Str("nextHash", expectedNextHashToSend.String()).
 					Int64("size", block.GetSize()).
 					Msg("downloaded the block")
@@ -162,17 +167,17 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 
 func (s *BitcoinBlocksIterator) downloadBlockHeaders(
 	ctx context.Context,
-	fromBlockHash blockchain.Hash,
-	headersCh chan<- *blockchain.BlockHeader,
+	fromBlockHeight int64,
+	downloadBlockHashes chan<- blockchain.Hash,
 ) {
-	defer close(headersCh)
+	defer close(downloadBlockHashes)
 
-	s.opts.logger.Info().Str("fromBlockHash", fromBlockHash.String()).Int("blockHeadersBufferSize", s.opts.blockHeadersBufferSize).Msg(
+	s.opts.logger.Info().Int64("fromBlockHeight", fromBlockHeight).Int("blockHeadersBufferSize", s.opts.blockHeadersBufferSize).Msg(
 		"begin downloading block headers",
 	)
 
-	currentBlockHash := fromBlockHash
-	alreadySentLastHeader := false
+	// currentBlockHash := fromBlockHash
+	currentBlockHeight := fromBlockHeight
 
 	// First, we get the block headers in order to create a batch of blocks
 	// Getting header is faster than getting full block information
@@ -182,41 +187,19 @@ func (s *BitcoinBlocksIterator) downloadBlockHeaders(
 		case <-ctx.Done():
 			return
 		default:
-			s.opts.logger.Info().Str("hash", currentBlockHash.String()).Msg("getting new header")
+			s.opts.logger.Info().Int64("height", currentBlockHeight).Msg("getting new header")
 
-			header, err := s.restClient.GetBlockHeader(ctx, currentBlockHash)
+			downloadedBlockHash, err := s.restClient.GetBlockHash(ctx, currentBlockHeight)
 			if err != nil {
-				s.opts.logger.Error().Str("hash", currentBlockHash.String()).Err(err).Msg("failed to get block header")
+				s.opts.logger.Error().Int64("height", currentBlockHeight).Err(err).Msg("failed to get block header")
 
 				time.Sleep(s.opts.waitAfterErrorDuration)
 
 				continue
 			}
 
-			newCurrentBlockHash := header.Hash
-
-			if len(header.NextBlockHash) != 0 {
-				newCurrentBlockHash = header.NextBlockHash
-			}
-
-			if !alreadySentLastHeader {
-				headersCh <- header
-				alreadySentLastHeader = true
-			}
-
-			// If there is new scanned block with different hash
-			if slices.Compare(newCurrentBlockHash, currentBlockHash) != 0 {
-				currentBlockHash = newCurrentBlockHash
-
-				//  We need to send this header on the next iteration
-				alreadySentLastHeader = false
-			} else {
-				s.opts.logger.Info().
-					Dur("waitFor", s.opts.downloadHeadersInterval).
-					Msg("there is no different next block header")
-
-				time.Sleep(s.opts.downloadHeadersInterval)
-			}
+			currentBlockHeight++
+			downloadBlockHashes <- *downloadedBlockHash
 		}
 	}
 }
