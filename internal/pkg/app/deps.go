@@ -27,7 +27,6 @@ func ProvideBitcoinCoreDeps(i *do.Injector) {
 
 func ProvideMigratorDeps(i *do.Injector) {
 	do.Provide(i, di.GetMigratorConstructor[redis.Pipeliner]())
-	do.Provide(i, di.GetMigratorFixerConstructor[redis.Pipeliner]())
 }
 
 func ProvideChainstateDeps(i *do.Injector) {

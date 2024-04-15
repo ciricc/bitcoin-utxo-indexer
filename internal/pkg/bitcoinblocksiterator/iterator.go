@@ -103,7 +103,7 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 				Str("hash", blockHash.String()).
 				Msg("got new header, begin downloading the block")
 
-			go func() {
+			go func(blockHash blockchain.Hash) {
 				// Releasing the place for the next goroutine
 				defer downloadBlocksSemaphore.Release()
 
@@ -151,14 +151,14 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 						Str("hash", nextBlock.GetHash().String()).
 						Str("nextHash", nextBlock.GetNextBlockHash().String()).
 						Msg("sending new block")
-					downloadedBlocks <- nextBlock
 
+					downloadedBlocks <- nextBlock
 					orderingBlocks.Delete(expectedNextHashToSend.String())
 
 					expectedNextHashToSend = nextBlock.GetNextBlockHash()
 				}
 
-			}()
+			}(blockHash)
 		}
 	}()
 

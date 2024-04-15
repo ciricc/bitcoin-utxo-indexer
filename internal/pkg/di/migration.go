@@ -14,22 +14,6 @@ import (
 	"github.com/samber/do"
 )
 
-func GetMigratorFixerConstructor[T any]() do.Provider[*chainstatemigration.MigrationFixer[T, *utxostore.Store[T]]] {
-	return func(i *do.Injector) (*chainstatemigration.MigrationFixer[T, *utxostore.Store[T]], error) {
-		logger, err := do.Invoke[*zerolog.Logger](i)
-		if err != nil {
-			return nil, fmt.Errorf("failed to invoke logger: %w", err)
-		}
-
-		migrator, err := do.Invoke[*chainstatemigration.Migrator[T, *utxostore.Store[T]]](i)
-		if err != nil {
-			return nil, fmt.Errorf("failed to invoke migrator: %w", err)
-		}
-
-		return chainstatemigration.NewMigrationFixer[T, *utxostore.Store[T]](logger, migrator), nil
-	}
-}
-
 func GetMigratorConstructor[T any]() do.Provider[*chainstatemigration.Migrator[T, *utxostore.Store[T]]] {
 	return func(i *do.Injector) (*chainstatemigration.Migrator[T, *utxostore.Store[T]], error) {
 		cfg, err := do.Invoke[*config.Config](i)
