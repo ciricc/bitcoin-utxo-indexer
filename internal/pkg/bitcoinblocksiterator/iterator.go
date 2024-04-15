@@ -3,6 +3,7 @@ package bitcoinblocksiterator
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -62,12 +63,13 @@ func (b *BitcoinBlocksIterator) Iterate(
 
 	go b.downloadBlockHeaders(ctx, blockHeader.GetHeight(), downloadBlockHashesCh)
 
-	return b.downloadBlocks(ctx, startFromBlockHashBytes, downloadBlockHashesCh), nil
+	return b.downloadBlocks(ctx, startFromBlockHashBytes, blockHeader.GetHeight(), downloadBlockHashesCh), nil
 }
 
 func (s *BitcoinBlocksIterator) downloadBlocks(
 	ctx context.Context,
 	startedFrom blockchain.Hash,
+	startedFromHeight int64,
 	blockHashesToDownload <-chan blockchain.Hash,
 ) <-chan *blockchain.Block {
 	s.opts.logger.Info().
@@ -80,7 +82,8 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 
 	orderingBlocks := xsync.NewMapOf[*blockchain.Block]()
 
-	expectedNextHashToSend := startedFrom
+	// expectedNextHashToSend := startedFrom
+	expectedNextBLockHeightToSend := startedFromHeight
 
 	go func() {
 		defer close(downloadedBlocks)
@@ -137,7 +140,7 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 				s.opts.logger.Info().
 					Str("hash", block.GetHash().String()).
 					Str("headerHash", blockHash.String()).
-					Str("nextHash", expectedNextHashToSend.String()).
+					Int64("nextHeight", expectedNextBLockHeightToSend).
 					Int64("size", block.GetSize()).
 					Msg("downloaded the block")
 
@@ -146,16 +149,16 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 
 				orderingBlocks.Store(block.GetHash().String(), block)
 
-				for nextBlock, ok := orderingBlocks.Load(expectedNextHashToSend.String()); ok; nextBlock, ok = orderingBlocks.Load(expectedNextHashToSend.String()) {
+				for nextBlock, ok := orderingBlocks.Load(strconv.FormatInt(expectedNextBLockHeightToSend, 10)); ok; nextBlock, ok = orderingBlocks.Load(strconv.FormatInt(expectedNextBLockHeightToSend, 10)) {
 					s.opts.logger.Debug().
 						Str("hash", nextBlock.GetHash().String()).
 						Str("nextHash", nextBlock.GetNextBlockHash().String()).
 						Msg("sending new block")
 
 					downloadedBlocks <- nextBlock
-					orderingBlocks.Delete(expectedNextHashToSend.String())
+					orderingBlocks.Delete(strconv.FormatInt(expectedNextBLockHeightToSend, 10))
 
-					expectedNextHashToSend = nextBlock.GetNextBlockHash()
+					expectedNextBLockHeightToSend = nextBlock.GetHeight()
 				}
 
 			}(blockHash)
