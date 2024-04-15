@@ -158,7 +158,7 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 					downloadedBlocks <- nextBlock
 					orderingBlocks.Delete(strconv.FormatInt(expectedNextBLockHeightToSend, 10))
 
-					expectedNextBLockHeightToSend = nextBlock.GetHeight()
+					expectedNextBLockHeightToSend = nextBlock.GetHeight() + 1
 				}
 
 			}(blockHash)

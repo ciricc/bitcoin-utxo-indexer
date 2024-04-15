@@ -27,8 +27,11 @@ type BlockchainInfo struct {
 // It is used for getting the block header from the blockchain
 // This realisation is most compatible with bitcoin blockchain
 type BlockHeader struct {
-	Hash          Hash           `json:"hash"`
-	NextBlockHash Hash           `json:"nextblockhash"`
+	Hash Hash `json:"hash"`
+
+	// Optional, mey be empty
+	NextBlockHash Hash `json:"nextblockhash"`
+
 	PrevBlockHash Hash           `json:"previousblockhash"`
 	Height        int64          `json:"height"`
 	MerkleRoot    string         `json:"merkleroot"`
