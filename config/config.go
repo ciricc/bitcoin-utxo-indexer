@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/deploy"
 	"github.com/go-ozzo/ozzo-validation/is"
@@ -59,10 +60,16 @@ type Config struct {
 			} `yaml:"leveldb"`
 
 			Redis struct {
-				Host     string `yaml:"host"`
-				Username string `yaml:"username"`
-				Password string `yaml:"password"`
-				DB       int    `yaml:"db"`
+				Host           string `yaml:"host"`
+				Username       string `yaml:"username"`
+				Password       string `yaml:"password"`
+				DB             int    `yaml:"db"`
+				ConnectionPool struct {
+					MaxIdleConns   int           `yaml:"maxIdleConns"`
+					MaxActiveConns int           `yaml:"maxActiveConns"`
+					ReadTimeout    time.Duration `yaml:"readTimeout"`
+					WriteTimeout   time.Duration `yaml:"writeTimeout"`
+				} `yaml:"connectionPool"`
 			} `yaml:"redis"`
 		} `yaml:"storage"`
 	} `yaml:"utxo"`

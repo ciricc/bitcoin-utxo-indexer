@@ -51,6 +51,12 @@ utxo:
     redis:
       host: localhost:6379
       db: 0
+      connectionPool:
+        maxIdleConns: 100 
+        maxActiveConns: 10_000
+        readTimeout: 10s 
+        writeTimeout: 1m 
+
       # username: utxo
       # password: fEcONJORtFAr
 

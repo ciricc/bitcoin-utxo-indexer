@@ -198,11 +198,14 @@ func NewRedisClient(i *do.Injector) (*redis.Client, error) {
 	}
 
 	client := redis.NewClient(&redis.Options{
-		Addr:         cfg.UTXO.Storage.Redis.Host,
-		Username:     cfg.UTXO.Storage.Redis.Username,
-		Password:     cfg.UTXO.Storage.Redis.Password,
-		DB:           cfg.UTXO.Storage.Redis.DB,
-		WriteTimeout: 2 * time.Minute,
+		Addr:           cfg.UTXO.Storage.Redis.Host,
+		Username:       cfg.UTXO.Storage.Redis.Username,
+		Password:       cfg.UTXO.Storage.Redis.Password,
+		DB:             cfg.UTXO.Storage.Redis.DB,
+		ReadTimeout:    cfg.UTXO.Storage.Redis.ConnectionPool.ReadTimeout,
+		WriteTimeout:   cfg.UTXO.Storage.Redis.ConnectionPool.WriteTimeout,
+		MaxIdleConns:   cfg.UTXO.Storage.Redis.ConnectionPool.MaxIdleConns,
+		MaxActiveConns: cfg.UTXO.Storage.Redis.ConnectionPool.MaxActiveConns,
 	})
 
 	return client, nil
