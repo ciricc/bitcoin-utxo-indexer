@@ -81,7 +81,6 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 
 	orderingBlocks := xsync.NewIntegerMapOf[int64, *blockchain.Block]()
 
-	// expectedNextHashToSend := startedFrom
 	expectedNextBLockHeightToSend := startedFromHeight
 
 	go func() {
