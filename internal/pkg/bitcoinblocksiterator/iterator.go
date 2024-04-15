@@ -3,7 +3,6 @@ package bitcoinblocksiterator
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -80,7 +79,7 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 	downloadedBlocks := make(chan *blockchain.Block, s.opts.concurrentBlocksDownloadLimit)
 	downloadBlocksMx := sync.Mutex{}
 
-	orderingBlocks := xsync.NewMapOf[*blockchain.Block]()
+	orderingBlocks := xsync.NewIntegerMapOf[int64, *blockchain.Block]()
 
 	// expectedNextHashToSend := startedFrom
 	expectedNextBLockHeightToSend := startedFromHeight
@@ -147,16 +146,16 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 				downloadBlocksMx.Lock()
 				defer downloadBlocksMx.Unlock()
 
-				orderingBlocks.Store(block.GetHash().String(), block)
+				orderingBlocks.Store(block.GetHeight(), block)
 
-				for nextBlock, ok := orderingBlocks.Load(strconv.FormatInt(expectedNextBLockHeightToSend, 10)); ok; nextBlock, ok = orderingBlocks.Load(strconv.FormatInt(expectedNextBLockHeightToSend, 10)) {
+				for nextBlock, ok := orderingBlocks.Load(expectedNextBLockHeightToSend); ok; nextBlock, ok = orderingBlocks.Load(expectedNextBLockHeightToSend) {
 					s.opts.logger.Debug().
 						Str("hash", nextBlock.GetHash().String()).
 						Int64("nextHeight", nextBlock.GetHeight()+1).
 						Msg("sending new block")
 
 					downloadedBlocks <- nextBlock
-					orderingBlocks.Delete(strconv.FormatInt(expectedNextBLockHeightToSend, 10))
+					orderingBlocks.Delete(expectedNextBLockHeightToSend)
 
 					expectedNextBLockHeightToSend = nextBlock.GetHeight() + 1
 				}
