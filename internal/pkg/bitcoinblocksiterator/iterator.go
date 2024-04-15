@@ -152,7 +152,7 @@ func (s *BitcoinBlocksIterator) downloadBlocks(
 				for nextBlock, ok := orderingBlocks.Load(strconv.FormatInt(expectedNextBLockHeightToSend, 10)); ok; nextBlock, ok = orderingBlocks.Load(strconv.FormatInt(expectedNextBLockHeightToSend, 10)) {
 					s.opts.logger.Debug().
 						Str("hash", nextBlock.GetHash().String()).
-						Str("nextHash", nextBlock.GetNextBlockHash().String()).
+						Int64("nextHeight", nextBlock.GetHeight()+1).
 						Msg("sending new block")
 
 					downloadedBlocks <- nextBlock
