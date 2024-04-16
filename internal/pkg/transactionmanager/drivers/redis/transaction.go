@@ -13,7 +13,7 @@ type RedisTransaction struct {
 }
 
 // NewRedisTransaction creates and returns a new RedisTransaction.
-func NewRedisTransaction(ctx context.Context, client *redis.Client) (*RedisTransaction, error) {
+func NewRedisTransaction(ctx context.Context, client *redis.Client, settings *Settings) (*RedisTransaction, error) {
 	// Initiate a new transaction.
 	tx := client.TxPipeline()
 	rtx := &RedisTransaction{client: client, tx: tx}

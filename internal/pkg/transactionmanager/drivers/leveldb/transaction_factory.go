@@ -16,7 +16,7 @@ type LevelDBTransactionOpener interface {
 // NewLevelDBTransactionFactory returns a factory for the leveldb transactions
 // It requires an instance of the leveldb transaction opener
 func NewLevelDBTransactionFactory(db LevelDBTransactionOpener) txmanager.TransactionFactory[*leveldb.Transaction] {
-	return func(ctx context.Context) (context.Context, txmanager.Transaction[*leveldb.Transaction], error) {
+	return func(ctx context.Context, _ txmanager.Settings) (context.Context, txmanager.Transaction[*leveldb.Transaction], error) {
 		tx, err := db.OpenTransaction()
 		if err != nil {
 			return ctx, nil, fmt.Errorf("failed to open transaction: %w", err)

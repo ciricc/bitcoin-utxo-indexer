@@ -9,7 +9,7 @@ import (
 )
 
 func NewInMemoryTransactionFactory(store *inmemorykvstore.Store) txmanager.TransactionFactory[*inmemorykvstore.Store] {
-	return func(ctx context.Context) (context.Context, txmanager.Transaction[*inmemorykvstore.Store], error) {
+	return func(ctx context.Context, settings txmanager.Settings) (context.Context, txmanager.Transaction[*inmemorykvstore.Store], error) {
 		tx, err := NewInMemoryTransaction(store)
 		if err != nil {
 			return ctx, nil, fmt.Errorf("create tx error: %w", err)

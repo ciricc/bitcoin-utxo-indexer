@@ -120,7 +120,7 @@ func (u *Service[T, _]) GetUTXOByBase58Address(ctx context.Context, address stri
 }
 
 func (u *Service[T, _]) AddFromBlock(ctx context.Context, block *blockchain.Block) error {
-	return u.txManager.Do(func(ctx context.Context, tx txmanager.Transaction[T]) error {
+	return u.txManager.Do(nil, func(ctx context.Context, tx txmanager.Transaction[T]) error {
 		currentHeight, err := u.s.GetBlockHeight(ctx)
 		if err != nil {
 			return err

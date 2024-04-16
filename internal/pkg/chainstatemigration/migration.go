@@ -267,7 +267,7 @@ func (m *Migrator[T, UTS]) updateUTXObatch(
 	ctx context.Context,
 	batch []*txOutputsEntry,
 ) error {
-	return m.utxoStoreTxManager.Do(func(ctx context.Context, tx txmanager.Transaction[T]) error {
+	return m.utxoStoreTxManager.Do(nil, func(ctx context.Context, tx txmanager.Transaction[T]) error {
 		utxoStoreWithTx, err := m.utxoStore.WithTx(tx)
 		if err != nil {
 			return err

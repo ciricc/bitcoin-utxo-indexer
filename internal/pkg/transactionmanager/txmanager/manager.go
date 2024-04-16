@@ -18,7 +18,7 @@ type Transaction[T any] interface {
 }
 
 // TransactionFactory is a function that creates a new transaction.
-type TransactionFactory[T any] func(ctx context.Context) (context.Context, Transaction[T], error)
+type TransactionFactory[T any] func(ctx context.Context, settings Settings) (context.Context, Transaction[T], error)
 
 type TransactionManager[T any] struct {
 	txFactory TransactionFactory[T]
@@ -30,12 +30,12 @@ func New[T any](factory TransactionFactory[T]) *TransactionManager[T] {
 	}
 }
 
-func (t *TransactionManager[T]) Do(fn func(ctx context.Context, tx Transaction[T]) error) error {
+func (t *TransactionManager[T]) Do(settings Settings, fn func(ctx context.Context, tx Transaction[T]) error) error {
 	if t.txFactory == nil {
 		return fmt.Errorf("txFactory is nil")
 	}
 
-	ctx, tx, err := t.txFactory(context.Background())
+	ctx, tx, err := t.txFactory(context.Background(), settings)
 	if err != nil {
 		return fmt.Errorf("failed to create transaction: %w", err)
 	}
