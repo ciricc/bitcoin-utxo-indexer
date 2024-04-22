@@ -59,6 +59,7 @@ func (d *DB) GetOutputs(ctx context.Context, txID []byte) ([]*utxo.TxOut, error)
 	txKey := buildTxIDKey(txID)
 
 	iterator := newUTXOIterator(d.ldb.NewIterator(&util.Range{Start: txKey}, nil), d.deobfuscator)
+	defer iterator.Release()
 
 	utxos := make([]*utxo.TxOut, 0)
 

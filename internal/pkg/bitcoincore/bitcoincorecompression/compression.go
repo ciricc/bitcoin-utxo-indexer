@@ -460,9 +460,9 @@ func DecompressScript(compressedPkScript []byte) []byte {
 //   1000000000 (5) -> 10       (1)           * 10.00000000 BTC
 // -----------------------------------------------------------------------------
 
-// compressTxOutAmount compresses the passed amount according to the domain
+// CompressTxOutAmount compresses the passed amount according to the domain
 // specific compression algorithm described above.
-func compressTxOutAmount(amount uint64) uint64 {
+func CompressTxOutAmount(amount uint64) uint64 {
 	// No need to do any work if it's zero.
 	if amount == 0 {
 		return 0
@@ -546,7 +546,7 @@ func decompressTxOutAmount(amount uint64) uint64 {
 // compressedTxOutSize returns the number of bytes the passed transaction output
 // fields would take when encoded with the format described above.
 func compressedTxOutSize(amount uint64, pkScript []byte) int {
-	return serializeSizeVLQ(compressTxOutAmount(amount)) +
+	return serializeSizeVLQ(CompressTxOutAmount(amount)) +
 		compressedScriptSize(pkScript)
 }
 
@@ -556,7 +556,7 @@ func compressedTxOutSize(amount uint64, pkScript []byte) int {
 // slice must be at least large enough to handle the number of bytes returned by
 // the compressedTxOutSize function or it will panic.
 func putCompressedTxOut(target []byte, amount uint64, pkScript []byte) int {
-	offset := PutVLQ(target, compressTxOutAmount(amount))
+	offset := PutVLQ(target, CompressTxOutAmount(amount))
 	offset += PutCompressedScript(target[offset:], pkScript)
 	return offset
 }

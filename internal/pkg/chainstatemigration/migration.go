@@ -105,12 +105,6 @@ func NewMigrator[T any, UTS UTXOStoreMethods](
 func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 	m.logger.Info().Msg("migrating UTXOs from chainstate to UTXO store")
 
-	m.logger.Info().Msg("flushing current UTXO store")
-
-	// if err := m.utxoStore.Flush(ctx); err != nil {
-	// 	return fmt.Errorf("failed to flush store: %w", err)
-	// }
-
 	countOfKeys, err := m.cdb.ApproximateSize()
 	if err != nil {
 		return fmt.Errorf("failed to get chainstate approximate size: %w", err)
@@ -119,6 +113,7 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 	m.logger.Debug().Int64("keys", countOfKeys).Msg("chainstate keys count")
 
 	utxoIterator := m.cdb.NewUTXOIterator()
+	defer utxoIterator.Release()
 
 	utxoByTxID := []*utxo.TxOut{}
 	currentTxID := ""
@@ -264,7 +259,7 @@ func (m *Migrator[T, _]) storeUTXOBatch(
 }
 
 func (m *Migrator[T, UTS]) updateUTXObatch(
-	ctx context.Context,
+	_ context.Context,
 	batch []*txOutputsEntry,
 ) error {
 	return m.utxoStoreTxManager.Do(nil, func(ctx context.Context, tx txmanager.Transaction[T]) error {

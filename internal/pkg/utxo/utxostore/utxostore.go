@@ -6,12 +6,16 @@ import (
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
+	redistx "github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/drivers/redis"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
+	"github.com/samber/lo"
 )
 
 type Store[T any] struct {
 	s    keyvaluestore.StoreWithTxManager[T]
 	sets sets.SetsWithTxManager[T]
+
+	txManager *txmanager.TransactionManager[T]
 
 	addressUTXOIds *redisAddressUTXOIdx[T]
 
@@ -23,12 +27,14 @@ func New[T any](
 	databaseVersion string,
 	storer keyvaluestore.StoreWithTxManager[T],
 	setsStore sets.SetsWithTxManager[T],
+	txManager *txmanager.TransactionManager[T],
 ) (*Store[T], error) {
 	store := &Store[T]{
 		s:              storer,
 		addressUTXOIds: newAddressUTXOIndex(databaseVersion, setsStore),
 		dbVer:          databaseVersion,
 		sets:           setsStore,
+		txManager:      txManager,
 	}
 
 	return store, nil
@@ -49,6 +55,7 @@ func (u *Store[T]) WithTx(tx txmanager.Transaction[T]) (*Store[T], error) {
 		s:              storerWithTx,
 		addressUTXOIds: newAddressUTXOIndex(u.dbVer, setsWithTx),
 		dbVer:          u.dbVer,
+		txManager:      u.txManager,
 	}, nil
 }
 
@@ -333,7 +340,7 @@ func (u *Store[T]) spendOutput(
 	return dereferencedAddressed, &spentOutput, nil
 }
 
-func (u *Store[T]) UpgradeTransactionOutputs(
+func (u *Store[T]) SetTransactionOutputs(
 	ctx context.Context,
 	txID string,
 	newOutputs []*TransactionOutput,
@@ -344,6 +351,106 @@ func (u *Store[T]) UpgradeTransactionOutputs(
 	}
 
 	return nil
+}
+
+func (u *Store[T]) SpendOutputsWithNewBlockInfo(
+	ctx context.Context,
+	newBlockHash string,
+	newBlockHeight int64,
+	newTxOutputs map[string][]*TransactionOutput,
+	dereferencedAddresses map[string][]string,
+	newAddressReferences map[string][]string,
+) error {
+	watchKeys := u.getStoreKeysToWatchFromCheckpointUP(
+		lo.Keys(newTxOutputs),
+		lo.Keys(dereferencedAddresses),
+		lo.Keys(newAddressReferences),
+	)
+
+	return u.txManager.Do(redistx.NewSettings(
+		redistx.WithWatchKeys(watchKeys...),
+	), func(ctx context.Context, tx txmanager.Transaction[T]) error {
+
+		selfWithTx, err := u.WithTx(tx)
+		if err != nil {
+			return fmt.Errorf("failed to wrap store in transaction: %w", err)
+		}
+
+		err = selfWithTx.SetBlockHash(ctx, newBlockHash)
+		if err != nil {
+			return fmt.Errorf("failed to set block height: %w", err)
+		}
+
+		err = selfWithTx.SetBlockHeight(ctx, newBlockHeight)
+		if err != nil {
+			return fmt.Errorf("failed to set block height: %w", err)
+		}
+
+		for txID, outputs := range newTxOutputs {
+			allSpent := true
+			for _, output := range outputs {
+				if !isSpentOutput(output) {
+					allSpent = false
+					break
+				}
+			}
+
+			if allSpent {
+				selfWithTx.SpendAllOutputs(ctx, txID)
+			} else {
+				selfWithTx.SetTransactionOutputs(ctx, txID, outputs)
+			}
+		}
+
+		for address, txIDRefs := range newAddressReferences {
+			err = selfWithTx.addressUTXOIds.addAddressUTXOTransactionIds(ctx, address, txIDRefs)
+			if err != nil {
+				return fmt.Errorf("failed to add address tx ids: %w", err)
+			}
+		}
+
+		for address, dereferencedTxIDs := range dereferencedAddresses {
+			err = selfWithTx.addressUTXOIds.deleteAdressUTXOTransactionIds(ctx, address, dereferencedTxIDs)
+			if err != nil {
+				return fmt.Errorf("failed to remove adddress tx id references")
+			}
+		}
+
+		return nil
+	})
+}
+
+func (u *Store[T]) getStoreKeysToWatchFromCheckpointUP(
+	changingTxIDS []string,
+	dereferencedAddresses []string,
+	newAddressReferences []string,
+) []string {
+	watchKeys := []string{}
+
+	watchKeys = append(watchKeys, newBlockHeightKey(u.dbVer).String(), newBlockHeightKey(u.dbVer).String())
+	watchKeys = append(watchKeys, newTransactionOutputsStringKeys(u.dbVer, changingTxIDS...)...)
+	watchKeys = append(watchKeys, newAddressStringKeys(u.dbVer, dereferencedAddresses...)...)
+	watchKeys = append(watchKeys, newAddressStringKeys(u.dbVer, newAddressReferences...)...)
+
+	return watchKeys
+}
+
+func newTransactionOutputsStringKeys(dbVer string, txIDs ...string) []string {
+	keys := make([]string, 0, len(txIDs))
+	for _, txID := range txIDs {
+		keys = append(keys, newTransactionIDKey(dbVer, txID).String())
+	}
+
+	return keys
+}
+
+func newAddressStringKeys(dbVer string, addresses ...string) []string {
+	keys := make([]string, 0, len(addresses))
+	for _, addr := range addresses {
+		keys = append(keys, newAddressUTXOTxIDsSetKey(dbVer, addr).String())
+	}
+
+	return keys
 }
 
 func (u *Store[T]) AreExiststsOutputs(

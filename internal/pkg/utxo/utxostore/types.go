@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"strconv"
 
+	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/bitcoincorecompression"
@@ -61,7 +62,12 @@ func (t *TransactionOutput) GetAddresses() ([]string, error) {
 
 	addrsStrings := make([]string, 0, len(addrs))
 	for _, addr := range addrs {
-		addrsStrings = append(addrsStrings, hex.EncodeToString(addr.ScriptAddress()))
+		addressHash := addr.ScriptAddress()
+		if pubKeyAddr, ok := addr.(*btcutil.AddressPubKey); ok {
+			addressHash = pubKeyAddr.AddressPubKeyHash().ScriptAddress()
+		}
+
+		addrsStrings = append(addrsStrings, hex.EncodeToString(addressHash))
 	}
 
 	return addrsStrings, nil

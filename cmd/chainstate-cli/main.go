@@ -99,6 +99,8 @@ func getChainstateKeysCount(ctx context.Context, chainState *chainstate.DB) (int
 	var count int64
 
 	iterator := chainState.NewUTXOIterator()
+	defer iterator.Release()
+
 	fmt.Println("Counting chainstate UTXOs ...")
 
 	ticker := time.NewTicker(time.Second)

@@ -33,6 +33,7 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/restclient"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
 	grpchandlers "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/transport/grpc"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxospending"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/ciricc/btc-utxo-indexer/pkg/api/grpc/UTXO"
 	"github.com/redis/go-redis/v9"
@@ -316,6 +317,11 @@ func GetUTXOStoreConstructor[T any]() do.Provider[*utxostore.Store[T]] {
 			return nil, fmt.Errorf("invoke redis store error: %w", err)
 		}
 
+		txManager, err := do.Invoke[*txmanager.TransactionManager[T]](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke transaction manager: %w", err)
+		}
+
 		sets, err := do.Invoke[sets.SetsWithTxManager[T]](i)
 		if err != nil {
 			return nil, fmt.Errorf("invoke sets error: %w", err)
@@ -331,7 +337,7 @@ func GetUTXOStoreConstructor[T any]() do.Provider[*utxostore.Store[T]] {
 			return nil, fmt.Errorf("failed to get database version: %w", err)
 		}
 
-		store, err := utxostore.New(strconv.FormatInt(databaseVersion, 10), kvStore, sets)
+		store, err := utxostore.New(strconv.FormatInt(databaseVersion, 10), kvStore, sets, txManager)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create UTXO store: %w", err)
 		}
@@ -349,8 +355,8 @@ func NewRedisSets(i *do.Injector) (sets.SetsWithTxManager[redis.Pipeliner], erro
 	return redissets.New(redis), nil
 }
 
-func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T, *utxostore.Store[T]]] {
-	return func(i *do.Injector) (*utxoservice.Service[T, *utxostore.Store[T]], error) {
+func GetUTXOServiceConstructor[T redis.Pipeliner]() do.Provider[*utxoservice.UTXOService] {
+	return func(i *do.Injector) (*utxoservice.UTXOService, error) {
 		utxoStore, err := do.Invoke[*utxostore.Store[T]](i)
 		if err != nil {
 			return nil, fmt.Errorf("failed to invoke UTXO store: %w", err)
@@ -361,9 +367,34 @@ func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T, *utx
 			return nil, fmt.Errorf("failed to invoke logger: %w", err)
 		}
 
-		txManager, err := do.Invoke[*txmanager.TransactionManager[T]](i)
+		bitcoinConfig, err := do.Invoke[*bitcoinconfig.BitcoinConfig](i)
 		if err != nil {
-			return nil, fmt.Errorf("failed to invoke tx manager: %w", err)
+			return nil, fmt.Errorf("failed to invoke bitcoin config: %w", err)
+		}
+
+		utxoSpender, err := do.Invoke[*utxospending.UTXOSpender](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke UTXO spender: %w", err)
+		}
+
+		utxoStoreService := utxoservice.NewRedisUTXOService(
+			utxoStore,
+			bitcoinConfig,
+			&utxoservice.ServiceOptions{
+				Logger: logger,
+			},
+			utxoSpender,
+		)
+
+		return utxoStoreService, nil
+	}
+}
+
+func GetUTXOSpenderConstructor[T any]() do.Provider[*utxospending.UTXOSpender] {
+	return func(i *do.Injector) (*utxospending.UTXOSpender, error) {
+		utxoStore, err := do.Invoke[*utxostore.Store[T]](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke UTXO store: %w", err)
 		}
 
 		bitcoinConfig, err := do.Invoke[*bitcoinconfig.BitcoinConfig](i)
@@ -371,16 +402,15 @@ func GetUTXOServiceConstructor[T any]() do.Provider[*utxoservice.Service[T, *utx
 			return nil, fmt.Errorf("failed to invoke bitcoin config: %w", err)
 		}
 
-		utxoStoreService := utxoservice.New(
-			utxoservice.UTXOStore[T, *utxostore.Store[T]](utxoStore),
-			txManager,
+		spender, err := utxospending.NewUTXOSpender(
+			utxoStore,
 			bitcoinConfig,
-			&utxoservice.ServiceOptions{
-				Logger: logger,
-			},
 		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create UTXO spender: %w", err)
+		}
 
-		return utxoStoreService, nil
+		return spender, nil
 	}
 }
 
@@ -446,9 +476,9 @@ func NewLogger(i *do.Injector) (*zerolog.Logger, error) {
 	return &log, nil
 }
 
-func GeUTXOGRPCHandlersConstructor[T any]() do.Provider[*grpchandlers.UTXOGrpcHandlers] {
+func GeUTXOGRPCHandlersConstructor[T redis.Pipeliner]() do.Provider[*grpchandlers.UTXOGrpcHandlers] {
 	return func(i *do.Injector) (*grpchandlers.UTXOGrpcHandlers, error) {
-		service, err := do.Invoke[*utxoservice.Service[T, *utxostore.Store[T]]](i)
+		service, err := do.Invoke[*utxoservice.UTXOService](i)
 		if err != nil {
 			return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
 		}

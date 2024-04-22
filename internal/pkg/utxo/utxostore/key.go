@@ -24,10 +24,6 @@ type storageKey struct {
 	key    string
 }
 
-func ver(v, key string) string {
-	return fmt.Sprintf("%s:%s", v, key)
-}
-
 func newBlockHeightKey(ver string) *storageKey {
 	return &storageKey{
 		dbVer:  ver,

@@ -131,7 +131,7 @@ func runUTXOScanner(
 		return fmt.Errorf("failed to invoke configuration: %w", err)
 	}
 
-	utxoStoreService, err := do.Invoke[*utxoservice.Service[redis.Pipeliner, *utxostore.Store[redis.Pipeliner]]](utxoContainer)
+	utxoStoreService, err := do.Invoke[*utxoservice.UTXOService](utxoContainer)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to create utxo store service")
 	}
@@ -394,10 +394,11 @@ func runChainstateMigration(chainstateContainer *do.Injector) error {
 		blockInfo.Height,
 	)
 
-	err = migration.Migrate(context.Background())
-	if err != nil {
-		return fmt.Errorf("migrate error: %w", err)
-	}
+	_ = migration
+	// err = migration.Migrate(context.Background())
+	// if err != nil {
+	// 	return fmt.Errorf("migrate error: %w", err)
+	// }
 
 	_, err = migrationManager.UpdateVersion(context.Background())
 	if err != nil {

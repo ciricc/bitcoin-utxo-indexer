@@ -2,6 +2,8 @@ package blockchain
 
 import (
 	"encoding/hex"
+	"fmt"
+	"math/big"
 	"strconv"
 
 	"github.com/btcsuite/btcd/txscript"
@@ -20,6 +22,17 @@ func (a *AmountValue) Uint64(decimals int) uint64 {
 	amountInt, _ := strconv.ParseUint(amountF.Mul(mulBy).String(), 10, 64)
 
 	return amountInt
+}
+
+func NewAmountValueFromString(val string) (*AmountValue, error) {
+	amountVal, _, err := big.ParseFloat(val, 10, 0, big.ToNearestEven)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parsr big float: %w", err)
+	}
+
+	return &AmountValue{
+		*bigjson.NewBigFloat(*amountVal),
+	}, nil
 }
 
 type CoinbaseInput struct {

@@ -13,7 +13,6 @@ require (
 	github.com/knadh/koanf v1.5.0
 	github.com/philippgille/gokv/encoding v0.7.0
 	github.com/puzpuzpuz/xsync v1.5.2
-	github.com/redis/go-redis/extra/redisotel/v9 v9.0.5
 	github.com/redis/go-redis/v9 v9.5.1
 	github.com/shopspring/decimal v1.3.1
 	github.com/stretchr/testify v1.9.0
@@ -70,6 +69,7 @@ require (
 
 require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
+	github.com/avito-tech/go-transaction-manager v1.5.0
 	github.com/btcsuite/btcd v0.24.0
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
@@ -91,6 +91,7 @@ require (
 	github.com/klauspost/compress v1.17.7 // indirect
 	github.com/pierrec/lz4/v4 v4.1.21 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
+	github.com/redis/go-redis/extra/redisotel/v9 v9.0.5
 	github.com/rs/zerolog v1.32.0
 	github.com/samber/do v1.6.0
 	github.com/samber/lo v1.39.0

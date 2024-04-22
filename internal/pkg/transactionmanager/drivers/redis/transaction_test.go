@@ -36,7 +36,7 @@ func TestTransaction(t *testing.T) {
 	}{
 		"commit": {
 			prepare: func(_ *testing.T, m redismock.ClientMock) {
-				// m.ExpectWatch(testKey)
+				m.ExpectWatch(testKey)
 				m.ExpectTxPipeline()
 
 				m.ExpectSet(testKey, testValue, testExp).SetVal(OK)
@@ -56,13 +56,13 @@ func TestTransaction(t *testing.T) {
 				ctx: ctx,
 			},
 			wantErr: func(t assert.TestingT, err error, _ ...interface{}) bool {
-				return assert.ErrorContains(t, err, "all expectations were already fulfilled, call to cmd '[multi]' was not expected")
+				return assert.ErrorContains(t, err, "all expectations were already fulfilled, call to cmd '[watch key1]' was not expected")
 			},
 			wantCmds: 0,
 		},
 		"commit_error": {
 			prepare: func(_ *testing.T, m redismock.ClientMock) {
-				// m.ExpectWatch(testKey)
+				m.ExpectWatch(testKey)
 				m.ExpectTxPipeline()
 
 				m.ExpectSet(testKey, testValue, testExp).SetVal(OK)
@@ -82,8 +82,10 @@ func TestTransaction(t *testing.T) {
 			args: args{
 				ctx: ctx,
 			},
-			prepare: func(t *testing.T, m redismock.ClientMock) {},
-			ret:     testErr,
+			prepare: func(t *testing.T, m redismock.ClientMock) {
+				m.ExpectWatch(testKey)
+			},
+			ret: testErr,
 			wantErr: func(t assert.TestingT, err error, _ ...interface{}) bool {
 				return assert.ErrorIs(t, err, testErr)
 			},
@@ -102,7 +104,9 @@ func TestTransaction(t *testing.T) {
 
 			m := txmanager.New(NewRedisTransactionFactory(db))
 
-			err := m.Do(nil, func(ctx context.Context, tx txmanager.Transaction[redis.Pipeliner]) error {
+			err := m.Do(NewSettings(
+				WithWatchKeys(testKey),
+			), func(ctx context.Context, tx txmanager.Transaction[redis.Pipeliner]) error {
 
 				cmd := tx.Transaction().Set(ctx, testKey, testValue, testExp)
 				if cmd.Err() != nil {

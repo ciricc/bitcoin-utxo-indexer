@@ -56,6 +56,10 @@ func (u *UTXOIterator) Next(ctx context.Context) (*utxo.TxOut, error) {
 	return txOut, nil
 }
 
+func (u *UTXOIterator) Release() {
+	u.iterator.Release()
+}
+
 func buildTxOutBytes(outpoint []byte, coin []byte) []byte {
 	fullTxOut := make([]byte, 0, len(outpoint)+len(coin))
 
