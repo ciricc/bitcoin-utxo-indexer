@@ -23,6 +23,7 @@ type ChainstateDB interface {
 
 type UTXOStore interface {
 	AreExiststsOutputs(ctx context.Context, txID string) (bool, error)
+	AddTransactionOutputsBatch(ctx context.Context, batch map[string][]*utxostore.TransactionOutput) error
 	AddTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
 	SetBlockHeight(ctx context.Context, blockHeight int64) error
 	SetBlockHash(ctx context.Context, blockHash string) error
@@ -262,10 +263,13 @@ func (m *Migrator) updateUTXObatch(
 	ctx context.Context,
 	batch []*txOutputsEntry,
 ) error {
+	newBatch := map[string][]*utxostore.TransactionOutput{}
 	for _, txEntry := range batch {
-		if err := m.utxoStore.AddTransactionOutputs(ctx, txEntry.txID, txEntry.outputs); err != nil {
-			return fmt.Errorf("failed to add transaction outputs: %w", err)
-		}
+		newBatch[txEntry.txID] = txEntry.outputs
+	}
+
+	if err := m.utxoStore.AddTransactionOutputsBatch(ctx, newBatch); err != nil {
+		return fmt.Errorf("failed to add transaction outputs: %w", err)
 	}
 
 	return nil

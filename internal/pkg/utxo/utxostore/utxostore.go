@@ -852,6 +852,35 @@ func (u *Store[T]) AddTransactionOutputs(
 	return u.addTransactionOutputs(ctx, txID, outputs)
 }
 
+func (u *Store[T]) AddTransactionOutputsBatch(ctx context.Context, batch map[string][]*TransactionOutput) error {
+	if !u.isConsist {
+		return ErrInconsistenceState
+	}
+
+	return u.addTransactionOutputsBatch(ctx, batch)
+}
+
+func (u *Store[T]) addTransactionOutputsBatch(
+	ctx context.Context,
+	batch map[string][]*TransactionOutput,
+) error {
+	return u.txManager.Do(ctx, nil, func(ctx context.Context, tx txmanager.Transaction[T]) error {
+		selfWithTx, err := u.WithTx(tx)
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction: %w", err)
+		}
+
+		for txID, outputs := range batch {
+			err := selfWithTx.addTransactionOutputs(ctx, txID, outputs)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
 func (u *Store[T]) addTransactionOutputs(
 	ctx context.Context,
 	txID string,
