@@ -387,11 +387,10 @@ func runChainstateMigration(chainstateContainer *do.Injector) error {
 		blockInfo.Height,
 	)
 
-	_ = migration
-	// err = migration.Migrate(context.Background())
-	// if err != nil {
-	// 	return fmt.Errorf("migrate error: %w", err)
-	// }
+	err = migration.Migrate(context.Background())
+	if err != nil {
+		return fmt.Errorf("migrate error: %w", err)
+	}
 
 	_, err = migrationManager.UpdateVersion(context.Background())
 	if err != nil {
