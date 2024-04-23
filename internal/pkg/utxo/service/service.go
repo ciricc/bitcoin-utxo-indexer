@@ -15,7 +15,6 @@ import (
 )
 
 type UTXOStoreMethods interface {
-	AddTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
 	GetOutputsByTxID(ctx context.Context, txID string) ([]*utxostore.TransactionOutput, error)
 	SpendOutput(ctx context.Context, txID string, idx int) ([]string, *utxostore.TransactionOutput, error)
 	GetUnspentOutputsByAddress(ctx context.Context, address string) ([]*utxostore.UTXOEntry, error)
@@ -26,18 +25,11 @@ type UTXOStoreMethods interface {
 	SpendAllOutputs(ctx context.Context, txID string) error
 	SetTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
 	RemoveAddressTxIDs(ctx context.Context, address string, txIDs []string) error
-	SpendOutputsWithNewBlockInfo(
-		ctx context.Context,
-		newBlockHash string,
-		newBlockHeight int64,
-		newTxOutputs map[string][]*utxostore.TransactionOutput,
-		dereferencedAddresses map[string][]string,
-		newAddressReferences map[string][]string,
-	) error
+	CommitCheckpoint(ctx context.Context, checkpoint *utxostore.UTXOSpendingCheckpoint) error
 }
 
 type UTXOSpender interface {
-	NewCheckpointFromNextBlock(ctx context.Context, newBlock *blockchain.Block) (*utxospending.UTXOSpendingCheckpoint, error)
+	NewCheckpointFromNextBlock(ctx context.Context, newBlock *blockchain.Block) (*utxostore.UTXOSpendingCheckpoint, error)
 }
 
 type ServiceOptions struct {
@@ -134,13 +126,9 @@ func (u *UTXOService) AddFromBlock(ctx context.Context, block *blockchain.Block)
 		return fmt.Errorf("failed to create next spending checkpoint: %w", err)
 	}
 
-	if err := u.s.SpendOutputsWithNewBlockInfo(
+	if err := u.s.CommitCheckpoint(
 		ctx,
-		spendingCheckpoint.GetNextBlockHash(),
-		spendingCheckpoint.GetNewBlockHeight(),
-		spendingCheckpoint.GetNewTransactionsOutputs(),
-		spendingCheckpoint.GetDereferencedAddressesTxs(),
-		spendingCheckpoint.GetNewAddreessReferences(),
+		spendingCheckpoint,
 	); err != nil {
 		return fmt.Errorf("fialed to store new block outputs: %w", err)
 	}

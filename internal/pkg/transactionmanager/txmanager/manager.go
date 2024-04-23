@@ -30,12 +30,12 @@ func New[T any](factory TransactionFactory[T]) *TransactionManager[T] {
 	}
 }
 
-func (t *TransactionManager[T]) Do(settings Settings, fn func(ctx context.Context, tx Transaction[T]) error) error {
+func (t *TransactionManager[T]) Do(ctx context.Context, settings Settings, fn func(ctx context.Context, tx Transaction[T]) error) error {
 	if t.txFactory == nil {
 		return fmt.Errorf("txFactory is nil")
 	}
 
-	ctx, tx, err := t.txFactory(context.Background(), settings)
+	ctx, tx, err := t.txFactory(ctx, settings)
 	if err != nil {
 		return fmt.Errorf("failed to create transaction: %w", err)
 	}

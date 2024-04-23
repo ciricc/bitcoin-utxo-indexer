@@ -15,7 +15,6 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/chainstatemigration"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/di"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/migrationmanager"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/restclient"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
@@ -380,16 +379,10 @@ func runChainstateMigration(chainstateContainer *do.Injector) error {
 		return fmt.Errorf("failed to invoke UTXO store: %w", err)
 	}
 
-	txManager, err := do.Invoke[*txmanager.TransactionManager[redis.Pipeliner]](chainstateContainer)
-	if err != nil {
-		return fmt.Errorf("failed to invoke tx manager: %w", err)
-	}
-
 	migration := chainstatemigration.NewMigrator(
 		logger,
 		chainstateDB,
 		utxoStore,
-		txManager,
 		cfg.ChainstateMigration.BatchSize,
 		blockInfo.Height,
 	)

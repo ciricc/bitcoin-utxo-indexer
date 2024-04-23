@@ -7,15 +7,14 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/config"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/chainstate"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/chainstatemigration"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/restclient"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
 )
 
-func GetMigratorConstructor[T any]() do.Provider[*chainstatemigration.Migrator[T, *utxostore.Store[T]]] {
-	return func(i *do.Injector) (*chainstatemigration.Migrator[T, *utxostore.Store[T]], error) {
+func GetMigratorConstructor[T any]() do.Provider[*chainstatemigration.Migrator] {
+	return func(i *do.Injector) (*chainstatemigration.Migrator, error) {
 		cfg, err := do.Invoke[*config.Config](i)
 		if err != nil {
 			return nil, fmt.Errorf("failed to invoke configuration: %w", err)
@@ -51,16 +50,10 @@ func GetMigratorConstructor[T any]() do.Provider[*chainstatemigration.Migrator[T
 			return nil, fmt.Errorf("failed to invoke UTXO store: %w", err)
 		}
 
-		txManager, err := do.Invoke[*txmanager.TransactionManager[T]](i)
-		if err != nil {
-			return nil, fmt.Errorf("failed to invoke tx manager: %w", err)
-		}
-
 		migration := chainstatemigration.NewMigrator(
 			logger,
 			chainstateDB,
-			chainstatemigration.UTXOStore[T, *utxostore.Store[T]](utxoStore),
-			txManager,
+			utxoStore,
 			cfg.ChainstateMigration.BatchSize,
 			blockInfo.Height,
 		)

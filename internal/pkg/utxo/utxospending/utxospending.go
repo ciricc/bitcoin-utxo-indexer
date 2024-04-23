@@ -35,8 +35,8 @@ func NewUTXOSpender(store UTXOStoreReadMethods, btcConfig BitcoinConfig) (*UTXOS
 func (u *UTXOSpender) NewCheckpointFromNextBlock(
 	ctx context.Context,
 	newBlock *blockchain.Block,
-) (*UTXOSpendingCheckpoint, error) {
-	var prevBlock *CheckpointBlock
+) (*utxostore.UTXOSpendingCheckpoint, error) {
+	var prevBlock *utxostore.CheckpointBlock
 
 	currentHash, err := u.store.GetBlockHash(ctx)
 	if err != nil {
@@ -57,10 +57,25 @@ func (u *UTXOSpender) NewCheckpointFromNextBlock(
 			return nil, ErrNextBlockTooFar
 		}
 
-		prevBlock = &CheckpointBlock{
+		prevBlock = &utxostore.CheckpointBlock{
 			Hash:   currentHash,
 			Height: currentHeight,
 		}
+	}
+
+	newBlockPoint := &utxostore.CheckpointBlock{
+		Height: newBlock.GetHeight(),
+		Hash:   newBlock.GetHash().String(),
+	}
+
+	if prevBlock == nil {
+		// we can't spend any output form the genesis block (only Bitcoin for now)
+		return utxostore.NewUTXOSpendingCheckpoint(
+			nil,
+			newBlockPoint,
+			map[string][]*utxostore.TransactionOutput{},
+			map[string][]string{}, map[string][]*utxostore.TransactionOutput{}, map[string][]string{},
+		), nil
 	}
 
 	// collecting all spending outputs and their current txs outputs state
@@ -87,12 +102,9 @@ func (u *UTXOSpender) NewCheckpointFromNextBlock(
 		return nil, err
 	}
 
-	return NewUTXOSpendingCheckpoint(
+	return utxostore.NewUTXOSpendingCheckpoint(
 		prevBlock,
-		&CheckpointBlock{
-			Height: newBlock.GetHeight(),
-			Hash:   newBlock.GetHash().String(),
-		},
+		newBlockPoint,
 		spendingOutputs,
 		dereferencedAddresses,
 		newTxOutputs,

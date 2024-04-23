@@ -41,6 +41,8 @@ utxo:
       address: localhost:50051
 
   storage:
+    checkpointFilePath: latest_utxo+checkpoint.json
+
     inMemory:
       persistenceFilePath: /var/lib/utxostore_inmemory/store.gob
 

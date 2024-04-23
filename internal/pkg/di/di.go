@@ -31,6 +31,7 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/restclient"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/checkpointstore"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
 	grpchandlers "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/transport/grpc"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxospending"
@@ -337,7 +338,12 @@ func GetUTXOStoreConstructor[T any]() do.Provider[*utxostore.Store[T]] {
 			return nil, fmt.Errorf("failed to get database version: %w", err)
 		}
 
-		store, err := utxostore.New(strconv.FormatInt(databaseVersion, 10), kvStore, sets, txManager)
+		checkpointsStore, err := do.Invoke[*checkpointstore.CheckpointStore](i)
+		if err != nil {
+			return nil, fmt.Errorf("failed to invoke checkpoints store: %w", err)
+		}
+
+		store, err := utxostore.New(strconv.FormatInt(databaseVersion, 10), kvStore, sets, txManager, checkpointsStore)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create UTXO store: %w", err)
 		}
@@ -412,6 +418,15 @@ func GetUTXOSpenderConstructor[T any]() do.Provider[*utxospending.UTXOSpender] {
 
 		return spender, nil
 	}
+}
+
+func NewCheckpointsStore(i *do.Injector) (*checkpointstore.CheckpointStore, error) {
+	cfg, err := do.Invoke[*config.Config](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke config: %w", err)
+	}
+
+	return checkpointstore.NewCheckpointStore(cfg.UTXO.Storage.CheckpointFilePath), nil
 }
 
 func NewBitcoinConfig(i *do.Injector) (*bitcoinconfig.BitcoinConfig, error) {

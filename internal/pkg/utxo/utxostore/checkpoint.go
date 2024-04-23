@@ -1,44 +1,42 @@
-package utxospending
-
-import "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
+package utxostore
 
 type UTXOSpendingCheckpoint struct {
 	// Previous block information
 	// This block needs to be recovered when making DOWN migration
-	PrevBlock *CheckpointBlock `json:"prev_block"`
+	PrevBlock *CheckpointBlock `json:"prev_block" msgpack:"prev_block"`
 
 	// New block information
 	// This block information needs to be used when making UP migration
-	NewBlock *CheckpointBlock `json:"new_block"`
+	NewBlock *CheckpointBlock `json:"new_block" msgpack:"new_block"`
 
 	// List of the transaction outputs with its before migrating content
 	// This outputs needs to be recovered when you make DOWN migration
-	TxsBeforeUpdate map[string][]*utxostore.TransactionOutput `json:"txs_before_update"`
+	TxsBeforeUpdate map[string][]*TransactionOutput `json:"txs_before_update" msgpack:"txs_before_update"`
 
 	// List of addressess needs to be dereferenced after UP migration
-	DereferencedAddressesTxs map[string][]string `json:"dereferenced_addresses_txs"`
+	DereferencedAddressesTxs map[string][]string `json:"dereferenced_addresses_txs" msgpack:"dereferenced_addresses_txs"`
 
 	// List of the new values for the transactions outputs
 	// This transactions needs to be added when you make UP migration
-	NewTxOutputs map[string][]*utxostore.TransactionOutput `json:"new_tx_outputs"`
+	NewTxOutputs map[string][]*TransactionOutput `json:"new_tx_outputs" msgpack:"new_tx_outputs"`
 
 	// List of the new addresses references
 	// This txs references needs to be added into address index when
 	// making UP migration
-	NewAddreessReferences map[string][]string `json:"new_address_refs"`
+	NewAddreessReferences map[string][]string `json:"new_address_refs" msgpack:"new_address_refs"`
 }
 
 type CheckpointBlock struct {
-	Height int64  `json:"height"`
-	Hash   string `json:"hash"`
+	Height int64  `json:"height" msgpack:"height"`
+	Hash   string `json:"hash" msgpack:"hash"`
 }
 
 func NewUTXOSpendingCheckpoint(
 	prevBlock *CheckpointBlock,
 	newBlock *CheckpointBlock,
-	txsBeforeUpdate map[string][]*utxostore.TransactionOutput,
+	txsBeforeUpdate map[string][]*TransactionOutput,
 	dereferencedAddressesTxs map[string][]string,
-	newTxOutputs map[string][]*utxostore.TransactionOutput,
+	newTxOutputs map[string][]*TransactionOutput,
 	newAddreessReferences map[string][]string,
 ) *UTXOSpendingCheckpoint {
 	return &UTXOSpendingCheckpoint{
@@ -59,11 +57,11 @@ func (u *UTXOSpendingCheckpoint) GetDereferencedAddressesTxs() map[string][]stri
 	return u.DereferencedAddressesTxs
 }
 
-func (u *UTXOSpendingCheckpoint) GetTransactionsBeforeUpdate() map[string][]*utxostore.TransactionOutput {
+func (u *UTXOSpendingCheckpoint) GetTransactionsBeforeUpdate() map[string][]*TransactionOutput {
 	return u.TxsBeforeUpdate
 }
 
-func (u *UTXOSpendingCheckpoint) GetNewTransactionsOutputs() map[string][]*utxostore.TransactionOutput {
+func (u *UTXOSpendingCheckpoint) GetNewTransactionsOutputs() map[string][]*TransactionOutput {
 	return u.NewTxOutputs
 }
 

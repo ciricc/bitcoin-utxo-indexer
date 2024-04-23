@@ -17,6 +17,7 @@ func ProvideUTXOStoreDeps(i *do.Injector) {
 	do.Provide(i, di.GetUTXOStoreConstructor[redis.Pipeliner]())
 	do.Provide(i, di.NewRedisKeyValueStore)
 	do.Provide(i, di.NewRedisClient)
+	do.Provide(i, di.NewCheckpointsStore)
 	do.Provide(i, di.GetUTXOSpenderConstructor[redis.Pipeliner]())
 }
 

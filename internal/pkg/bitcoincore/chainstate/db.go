@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/binaryutils"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/bitcoincorecompression"
@@ -72,6 +73,7 @@ func (d *DB) GetOutputs(ctx context.Context, txID []byte) ([]*utxo.TxOut, error)
 
 			return nil, fmt.Errorf("failed to iterate over UTXOs")
 		}
+		log.Println("utxo", utxo, utxo.GetTxID())
 		if utxo.GetTxID() == hex.EncodeToString(txID) {
 			utxos = append(utxos, utxo)
 		} else {

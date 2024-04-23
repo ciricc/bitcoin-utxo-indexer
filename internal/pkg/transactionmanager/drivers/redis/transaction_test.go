@@ -104,7 +104,7 @@ func TestTransaction(t *testing.T) {
 
 			m := txmanager.New(NewRedisTransactionFactory(db))
 
-			err := m.Do(NewSettings(
+			err := m.Do(context.TODO(), NewSettings(
 				WithWatchKeys(testKey),
 			), func(ctx context.Context, tx txmanager.Transaction[redis.Pipeliner]) error {
 

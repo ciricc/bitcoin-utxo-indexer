@@ -2,7 +2,9 @@ package utxostore
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/setsabstraction/sets"
@@ -11,11 +13,26 @@ import (
 	"github.com/samber/lo"
 )
 
+type CheckpointStore interface {
+	// LastCheckpopintmust return latest checkpoint saved to the storage
+	LastCheckpoint(ctx context.Context) (bool, *UTXOSpendingCheckpoint, error)
+
+	// SaveCheckpoint must save new checkpoint and make it as the latest
+	SaveCheckpoint(ctx context.Context, checkpoint *UTXOSpendingCheckpoint) error
+
+	// RemoveLatestCheckpoint must remove latest checkpoint
+	RemoveLatestCheckpoint(ctx context.Context) error
+}
+
 type Store[T any] struct {
 	s    keyvaluestore.StoreWithTxManager[T]
 	sets sets.SetsWithTxManager[T]
 
 	txManager *txmanager.TransactionManager[T]
+
+	checkpointsStore CheckpointStore
+	isConsist        bool
+	fixConsistencyOp chan struct{}
 
 	addressUTXOIds *redisAddressUTXOIdx[T]
 
@@ -28,6 +45,7 @@ func New[T any](
 	storer keyvaluestore.StoreWithTxManager[T],
 	setsStore sets.SetsWithTxManager[T],
 	txManager *txmanager.TransactionManager[T],
+	checkpointStore CheckpointStore,
 ) (*Store[T], error) {
 	store := &Store[T]{
 		s:              storer,
@@ -35,9 +53,208 @@ func New[T any](
 		dbVer:          databaseVersion,
 		sets:           setsStore,
 		txManager:      txManager,
+
+		checkpointsStore: checkpointStore,
+		isConsist:        false,
+		fixConsistencyOp: make(chan struct{}, 1),
+	}
+
+	err := store.checkConsistencyAndTryToFix(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to check consistency: %w", err)
 	}
 
 	return store, nil
+}
+
+func (u *Store[T]) checkConsistencyAndTryToFix(ctx context.Context) error {
+	if u.isConsist {
+		return nil
+	}
+
+	defer func() {
+		<-u.fixConsistencyOp
+	}()
+
+	u.fixConsistencyOp <- struct{}{}
+	if u.isConsist {
+		return nil
+	}
+
+	exists, latestCheckpoint, err := u.checkpointsStore.LastCheckpoint(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get latest checkpoint: %w", err)
+	}
+
+	if !exists {
+		u.isConsist = true
+		return nil
+	}
+
+	ok, err := u.isConsistenceWithCheckpoint(ctx, latestCheckpoint)
+	if err != nil {
+		return fmt.Errorf("failed to check store consistency with checkpoint")
+	}
+
+	if ok {
+		err = u.checkpointsStore.RemoveLatestCheckpoint(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to remove last checkpoint: %w", err)
+		}
+
+		u.isConsist = true
+		return nil
+	}
+
+	// fix consistency
+	err = u.downCheckpoint(ctx, latestCheckpoint)
+	if err != nil {
+		return fmt.Errorf("failed to downgrade to previouse state before checkpoint: %w", err)
+	}
+
+	err = u.checkpointsStore.RemoveLatestCheckpoint(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to remove checkpoint")
+	}
+
+	return nil
+}
+
+func (u *Store[T]) downCheckpoint(
+	ctx context.Context,
+	checkpoint *UTXOSpendingCheckpoint,
+) error {
+	previousBlockHash := checkpoint.GetPreviousBlockHash()
+	previousBlockHeight := checkpoint.GetPreviousBlockheight()
+
+	err := u.setBlockHash(ctx, previousBlockHash)
+	if err != nil {
+		return fmt.Errorf("failed to restore block hash: %w", err)
+	}
+
+	err = u.setBlockHeight(ctx, previousBlockHeight)
+	if err != nil {
+		return fmt.Errorf("failed to restore block height: %w", err)
+	}
+
+	newAddressReferences := checkpoint.GetNewAddreessReferences()
+	for addr, txIDs := range newAddressReferences {
+		err = u.removeAddressTxIDS(ctx, addr, txIDs)
+		if err != nil {
+			return fmt.Errorf("failed to remove address tx ids: %w", err)
+		}
+	}
+
+	dereferencedAddresses := checkpoint.GetDereferencedAddressesTxs()
+	for addr, txIDs := range dereferencedAddresses {
+		err = u.addressUTXOIds.addAddressUTXOTransactionIds(ctx, addr, txIDs)
+		if err != nil {
+			return fmt.Errorf("failed to add dereferenced addres tx ids: %w", err)
+		}
+	}
+
+	txOutputsBeforeUpdate := checkpoint.GetTransactionsBeforeUpdate()
+	newTxOutputs := checkpoint.GetNewTransactionsOutputs()
+
+	for txID := range newTxOutputs {
+		if _, ok := txOutputsBeforeUpdate[txID]; !ok {
+			err = u.spendAllOutputs(ctx, txID)
+			if err != nil {
+				return fmt.Errorf("failed to remove new tx outputs: %w", err)
+			}
+		}
+	}
+
+	for txID, outputs := range txOutputsBeforeUpdate {
+		err = u.setTransactionOutputs(ctx, txID, outputs)
+		if err != nil {
+			return fmt.Errorf("failed to restore transaction outputs: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (u *Store[T]) isConsistenceWithCheckpoint(
+	ctx context.Context,
+	checkpoint *UTXOSpendingCheckpoint,
+) (bool, error) {
+
+	currentBlockHash, err := u.getBlockHash(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get current block hash: %w", err)
+	}
+
+	if currentBlockHash != checkpoint.GetNextBlockHash() {
+		return false, nil
+	}
+
+	currentBlockHeight, err := u.getBlockHeight(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get current block height: %w", err)
+	}
+
+	if currentBlockHeight != checkpoint.GetNewBlockHeight() {
+		return false, nil
+	}
+
+	for addr, txIDS := range checkpoint.NewAddreessReferences {
+		currrentTxIDS, err := u.addressUTXOIds.getAddressUTXOTransactionIds(ctx, addr)
+		if err != nil {
+			return false, fmt.Errorf("failed to get address transaction ids: %w", err)
+		}
+
+		if !lo.Every(currrentTxIDS, txIDS) {
+			return false, nil
+		}
+	}
+
+	for addr, txIDS := range checkpoint.DereferencedAddressesTxs {
+		currentTxIDS, err := u.addressUTXOIds.getAddressUTXOTransactionIds(ctx, addr)
+		if err != nil {
+			return false, fmt.Errorf("failed to get address transaction ids: %w", err)
+		}
+
+		if !lo.None(currentTxIDS, txIDS) {
+			return false, nil
+		}
+	}
+
+	for txID, outputs := range checkpoint.GetNewTransactionsOutputs() {
+		if isAllSpent(outputs) {
+			_, err = u.getOutputsByTxID(ctx, txID)
+			if err != nil {
+				if errors.Is(err, ErrNotFound) {
+					continue
+				}
+
+				return false, fmt.Errorf("failed to get tx outputs: %w", err)
+			}
+
+			return false, nil
+		} else {
+			currentOutputs, err := u.getOutputsByTxID(ctx, txID)
+			if err != nil {
+				return false, fmt.Errorf("failed to get transaction outputs: %w", err)
+			}
+
+			if !reflect.DeepEqual(currentOutputs, outputs) {
+				return false, nil
+			}
+		}
+	}
+
+	return true, nil
+}
+
+func isAllSpent(outputs []*TransactionOutput) bool {
+	for _, output := range outputs {
+		if !isSpentOutput(output) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (u *Store[T]) WithTx(tx txmanager.Transaction[T]) (*Store[T], error) {
@@ -52,10 +269,12 @@ func (u *Store[T]) WithTx(tx txmanager.Transaction[T]) (*Store[T], error) {
 	}
 
 	return &Store[T]{
-		s:              storerWithTx,
-		addressUTXOIds: newAddressUTXOIndex(u.dbVer, setsWithTx),
-		dbVer:          u.dbVer,
-		txManager:      u.txManager,
+		s:                storerWithTx,
+		addressUTXOIds:   newAddressUTXOIndex(u.dbVer, setsWithTx),
+		dbVer:            u.dbVer,
+		txManager:        u.txManager,
+		isConsist:        u.isConsist,
+		fixConsistencyOp: u.fixConsistencyOp,
 	}, nil
 }
 
@@ -68,6 +287,14 @@ func (u *Store[T]) Flush(ctx context.Context) error {
 }
 
 func (u *Store[T]) GetBlockHeight(ctx context.Context) (int64, error) {
+	if !u.isConsist {
+		return 0, ErrInconsistenceState
+	}
+
+	return u.getBlockHeight(ctx)
+}
+
+func (u *Store[T]) getBlockHeight(ctx context.Context) (int64, error) {
 	blockHeightKey := newBlockHeightKey(u.dbVer)
 
 	var currentBlockHeight int64
@@ -81,6 +308,14 @@ func (u *Store[T]) GetBlockHeight(ctx context.Context) (int64, error) {
 }
 
 func (u *Store[T]) GetBlockHash(ctx context.Context) (string, error) {
+	if !u.isConsist {
+		return "", ErrInconsistenceState
+	}
+
+	return u.getBlockHash(ctx)
+}
+
+func (u *Store[T]) getBlockHash(ctx context.Context) (string, error) {
 	blockHashKey := newBlockHashKey(u.dbVer)
 
 	var currentBlockHash string
@@ -98,6 +333,14 @@ func (u *Store[T]) GetBlockHash(ctx context.Context) (string, error) {
 }
 
 func (u *Store[T]) SetBlockHeight(ctx context.Context, blockHeight int64) error {
+	if !u.isConsist {
+		return ErrInconsistenceState
+	}
+
+	return u.setBlockHeight(ctx, blockHeight)
+}
+
+func (u *Store[T]) setBlockHeight(ctx context.Context, blockHeight int64) error {
 	blockHeightKey := newBlockHeightKey(u.dbVer)
 
 	err := u.s.Set(ctx, blockHeightKey.String(), blockHeight)
@@ -109,6 +352,14 @@ func (u *Store[T]) SetBlockHeight(ctx context.Context, blockHeight int64) error 
 }
 
 func (u *Store[T]) SetBlockHash(ctx context.Context, blockHash string) error {
+	if !u.isConsist {
+		return ErrInconsistenceState
+	}
+
+	return u.setBlockHash(ctx, blockHash)
+}
+
+func (u *Store[T]) setBlockHash(ctx context.Context, blockHash string) error {
 	blockHashKey := newBlockHashKey(u.dbVer)
 
 	err := u.s.Set(ctx, blockHashKey.String(), blockHash)
@@ -120,6 +371,14 @@ func (u *Store[T]) SetBlockHash(ctx context.Context, blockHash string) error {
 }
 
 func (u *Store[T]) RemoveAddressTxIDs(ctx context.Context, address string, txIDs []string) error {
+	if !u.isConsist {
+		return ErrInconsistenceState
+	}
+
+	return u.removeAddressTxIDS(ctx, address, txIDs)
+}
+
+func (u *Store[T]) removeAddressTxIDS(ctx context.Context, address string, txIDs []string) error {
 	if err := u.addressUTXOIds.deleteAdressUTXOTransactionIds(ctx, address, txIDs); err != nil {
 		return fmt.Errorf("delete address UTXO tx ids error: %w", err)
 	}
@@ -128,6 +387,17 @@ func (u *Store[T]) RemoveAddressTxIDs(ctx context.Context, address string, txIDs
 }
 
 func (u *Store[T]) GetUnspentOutputsByAddress(ctx context.Context, address string) ([]*UTXOEntry, error) {
+	if !u.isConsist {
+		return nil, ErrInconsistenceState
+	}
+
+	return u.getUnspentOutputsByAddress(ctx, address)
+}
+
+func (u *Store[T]) getUnspentOutputsByAddress(
+	ctx context.Context,
+	address string,
+) ([]*UTXOEntry, error) {
 	txIDsWithOutputs, err := u.addressUTXOIds.getAddressUTXOTransactionIds(ctx, address)
 	if err != nil {
 		return nil, err
@@ -213,6 +483,17 @@ func (u *Store[T]) GetOutputsByTxID(
 	ctx context.Context,
 	txID string,
 ) ([]*TransactionOutput, error) {
+	if !u.isConsist {
+		return nil, ErrInconsistenceState
+	}
+
+	return u.getOutputsByTxID(ctx, txID)
+}
+
+func (u *Store[T]) getOutputsByTxID(
+	ctx context.Context,
+	txID string,
+) ([]*TransactionOutput, error) {
 	var outputs []*TransactionOutput
 
 	ok, err := u.s.Get(ctx, newTransactionIDKey(u.dbVer, txID).String(), &outputs)
@@ -233,11 +514,25 @@ func (u *Store[T]) SpendOutputFromRetrievedOutputs(
 	outputs []*TransactionOutput,
 	idx int,
 ) ([]string, *TransactionOutput, error) {
+	if !u.isConsist {
+		return nil, nil, ErrInconsistenceState
+	}
 
-	return u.spendOutput(ctx, txID, idx, outputs)
+	return u.spendOutputFromList(ctx, txID, idx, outputs)
 }
 
 func (u *Store[T]) SpendAllOutputs(
+	ctx context.Context,
+	txID string,
+) error {
+	if !u.isConsist {
+		return ErrInconsistenceState
+	}
+
+	return u.spendAllOutputs(ctx, txID)
+}
+
+func (u *Store[T]) spendAllOutputs(
 	ctx context.Context,
 	txID string,
 ) error {
@@ -254,6 +549,18 @@ func (u *Store[T]) SpendOutput(
 	txID string,
 	idx int,
 ) ([]string, *TransactionOutput, error) {
+	if !u.isConsist {
+		return nil, nil, ErrInconsistenceState
+	}
+
+	return u.spendOutput(ctx, txID, idx)
+}
+
+func (u *Store[T]) spendOutput(
+	ctx context.Context,
+	txID string,
+	idx int,
+) ([]string, *TransactionOutput, error) {
 	var outputs []*TransactionOutput
 	var txOutputsKey = newTransactionIDKey(u.dbVer, txID)
 
@@ -266,10 +573,10 @@ func (u *Store[T]) SpendOutput(
 		return nil, nil, ErrNotFound
 	}
 
-	return u.spendOutput(ctx, txID, idx, outputs)
+	return u.spendOutputFromList(ctx, txID, idx, outputs)
 }
 
-func (u *Store[T]) spendOutput(
+func (u *Store[T]) spendOutputFromList(
 	ctx context.Context,
 	txID string,
 	idx int,
@@ -345,6 +652,18 @@ func (u *Store[T]) SetTransactionOutputs(
 	txID string,
 	newOutputs []*TransactionOutput,
 ) error {
+	if !u.isConsist {
+		return ErrInconsistenceState
+	}
+
+	return u.setTransactionOutputs(ctx, txID, newOutputs)
+}
+
+func (u *Store[T]) setTransactionOutputs(
+	ctx context.Context,
+	txID string,
+	newOutputs []*TransactionOutput,
+) error {
 	err := u.setNewTxOutputs(ctx, txID, newOutputs)
 	if err != nil {
 		return err
@@ -353,7 +672,41 @@ func (u *Store[T]) SetTransactionOutputs(
 	return nil
 }
 
-func (u *Store[T]) SpendOutputsWithNewBlockInfo(
+func (u *Store[T]) CommitCheckpoint(
+	ctx context.Context,
+	checkpoint *UTXOSpendingCheckpoint,
+) error {
+	if !u.isConsist {
+		return ErrInconsistenceState
+	}
+
+	err := u.checkpointsStore.SaveCheckpoint(ctx, checkpoint)
+	if err != nil {
+		return fmt.Errorf("failed to save checkppoint before update: %w", err)
+	}
+
+	// Before commit new checkpoint, we need to check the consistency of the current store state
+	err = u.spendOutputsWithNewBlockInfo(
+		ctx,
+		checkpoint.GetNextBlockHash(),
+		checkpoint.GetNewBlockHeight(),
+		checkpoint.GetNewTransactionsOutputs(),
+		checkpoint.GetDereferencedAddressesTxs(),
+		checkpoint.GetNewAddreessReferences(),
+	)
+	if err != nil {
+		return err
+	}
+
+	err = u.checkpointsStore.RemoveLatestCheckpoint(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to remove latest checkpoint: %w", err)
+	}
+
+	return nil
+}
+
+func (u *Store[T]) spendOutputsWithNewBlockInfo(
 	ctx context.Context,
 	newBlockHash string,
 	newBlockHeight int64,
@@ -361,13 +714,14 @@ func (u *Store[T]) SpendOutputsWithNewBlockInfo(
 	dereferencedAddresses map[string][]string,
 	newAddressReferences map[string][]string,
 ) error {
+
 	watchKeys := u.getStoreKeysToWatchFromCheckpointUP(
 		lo.Keys(newTxOutputs),
 		lo.Keys(dereferencedAddresses),
 		lo.Keys(newAddressReferences),
 	)
 
-	return u.txManager.Do(redistx.NewSettings(
+	err := u.txManager.Do(ctx, redistx.NewSettings(
 		redistx.WithWatchKeys(watchKeys...),
 	), func(ctx context.Context, tx txmanager.Transaction[T]) error {
 
@@ -376,12 +730,12 @@ func (u *Store[T]) SpendOutputsWithNewBlockInfo(
 			return fmt.Errorf("failed to wrap store in transaction: %w", err)
 		}
 
-		err = selfWithTx.SetBlockHash(ctx, newBlockHash)
+		err = selfWithTx.setBlockHash(ctx, newBlockHash)
 		if err != nil {
 			return fmt.Errorf("failed to set block height: %w", err)
 		}
 
-		err = selfWithTx.SetBlockHeight(ctx, newBlockHeight)
+		err = selfWithTx.setBlockHeight(ctx, newBlockHeight)
 		if err != nil {
 			return fmt.Errorf("failed to set block height: %w", err)
 		}
@@ -396,9 +750,9 @@ func (u *Store[T]) SpendOutputsWithNewBlockInfo(
 			}
 
 			if allSpent {
-				selfWithTx.SpendAllOutputs(ctx, txID)
+				selfWithTx.spendAllOutputs(ctx, txID)
 			} else {
-				selfWithTx.SetTransactionOutputs(ctx, txID, outputs)
+				selfWithTx.setTransactionOutputs(ctx, txID, outputs)
 			}
 		}
 
@@ -418,6 +772,13 @@ func (u *Store[T]) SpendOutputsWithNewBlockInfo(
 
 		return nil
 	})
+
+	if err != nil {
+		u.isConsist = false
+		return fmt.Errorf("failed to comlete transaction: %w", err)
+	}
+
+	return nil
 }
 
 func (u *Store[T]) getStoreKeysToWatchFromCheckpointUP(
@@ -457,6 +818,17 @@ func (u *Store[T]) AreExiststsOutputs(
 	ctx context.Context,
 	txID string,
 ) (bool, error) {
+	if !u.isConsist {
+		return false, ErrInconsistenceState
+	}
+
+	return u.areExistsOutputs(ctx, txID)
+}
+
+func (u *Store[T]) areExistsOutputs(
+	ctx context.Context,
+	txID string,
+) (bool, error) {
 	var outputs []any
 	var txOutputsKey = newTransactionIDKey(u.dbVer, txID)
 
@@ -469,6 +841,18 @@ func (u *Store[T]) AreExiststsOutputs(
 }
 
 func (u *Store[T]) AddTransactionOutputs(
+	ctx context.Context,
+	txID string,
+	outputs []*TransactionOutput,
+) error {
+	if !u.isConsist {
+		return ErrInconsistenceState
+	}
+
+	return u.addTransactionOutputs(ctx, txID, outputs)
+}
+
+func (u *Store[T]) addTransactionOutputs(
 	ctx context.Context,
 	txID string,
 	outputs []*TransactionOutput,

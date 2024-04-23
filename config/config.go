@@ -51,6 +51,8 @@ type Config struct {
 		} `yaml:"service"`
 
 		Storage struct {
+			CheckpointFilePath string `yaml:"checkpointFilePath"`
+
 			InMemory struct {
 				PersistenceFilePath string `yaml:"persistenceFilePath"`
 			} `yaml:"inMemory"`
@@ -86,6 +88,13 @@ func (c Config) Validate() error {
 		validation.Field(&c.BlockchainNode.RestURL, validation.Required, is.URL),
 	); err != nil {
 		return fmt.Errorf("failed to validate blockchainNode options: %w", err)
+	}
+
+	if err := validation.ValidateStruct(
+		&c.UTXO.Storage,
+		validation.Field(&c.UTXO.Storage.CheckpointFilePath, validation.Length(0, -1)),
+	); err != nil {
+		return fmt.Errorf("utxo configuration validation error: %w", err)
 	}
 
 	if err := validation.ValidateStruct(

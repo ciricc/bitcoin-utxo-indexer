@@ -10,7 +10,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/chainstate"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoincore/utxo"
-	"github.com/ciricc/btc-utxo-indexer/internal/pkg/transactionmanager/txmanager"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
 	"github.com/rs/zerolog"
 )
@@ -22,18 +21,12 @@ type ChainstateDB interface {
 	ApproximateSize() (int64, error)
 }
 
-type UTXOStoreMethods interface {
+type UTXOStore interface {
 	AreExiststsOutputs(ctx context.Context, txID string) (bool, error)
 	AddTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
 	SetBlockHeight(ctx context.Context, blockHeight int64) error
 	SetBlockHash(ctx context.Context, blockHash string) error
 	Flush(ctx context.Context) error
-}
-
-type UTXOStore[T any, UTS UTXOStoreMethods] interface {
-	UTXOStoreMethods
-
-	WithTx(txmanager.Transaction[T]) (UTS, error)
 }
 
 type BitcoinConfig interface {
@@ -46,15 +39,15 @@ type txOutputsEntry struct {
 	outputs []*utxostore.TransactionOutput
 }
 
-type Migrator[T any, UTS UTXOStoreMethods] struct {
+type Migrator struct {
 	// The chainstate from which to migrate the UTXOs.
 	cdb ChainstateDB
 
 	// The UTXO store to migrate the UTXOs to.
-	utxoStore UTXOStore[T, UTS]
+	utxoStore UTXOStore
 
 	// It needed to store the outputs in the batch
-	utxoStoreTxManager *txmanager.TransactionManager[T]
+	// utxoStoreTxManager *txmanager.TransactionManager[T]
 
 	// The block height of the chainstate. This is used to set the block height in the UTXO store.
 	chainstateBlockHeight int64
@@ -76,25 +69,24 @@ type Migrator[T any, UTS UTXOStoreMethods] struct {
 	restoredLastSavedTxID bool
 }
 
-func NewMigrator[T any, UTS UTXOStoreMethods](
+func NewMigrator(
 	logger *zerolog.Logger,
 
 	cdb ChainstateDB,
 
-	utxoStore UTXOStore[T, UTS],
-	utxoStoreTxManager *txmanager.TransactionManager[T],
+	utxoStore UTXOStore,
+	// utxoStoreTxManager *txmanager.TransactionManager[T],
 
 	batchSize int,
 	chainstateBlockHeight int64,
-) *Migrator[T, UTS] {
-	return &Migrator[T, UTS]{
+) *Migrator {
+	return &Migrator{
 		logger: logger,
 
 		cdb:       cdb,
 		utxoStore: utxoStore,
 
 		chainstateBlockHeight: chainstateBlockHeight,
-		utxoStoreTxManager:    utxoStoreTxManager,
 
 		batchSize:             batchSize,
 		restoredLastSavedTxID: false,
@@ -102,7 +94,7 @@ func NewMigrator[T any, UTS UTXOStoreMethods](
 }
 
 // Migrate migrates the UTXO from the chainstate database to the UTXO store.
-func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
+func (m *Migrator) Migrate(ctx context.Context) error {
 	m.logger.Info().Msg("migrating UTXOs from chainstate to UTXO store")
 
 	countOfKeys, err := m.cdb.ApproximateSize()
@@ -179,6 +171,15 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 		}
 	}
 
+	if len(utxoByTxID) > 0 {
+		// migrate utxo grouped by tx id
+		outputs := ConvertUTXOlistToTransactionOutputList(utxoByTxID)
+		utxoBatch = append(utxoBatch, &txOutputsEntry{
+			txID:    currentTxID,
+			outputs: outputs,
+		})
+	}
+
 	if len(utxoBatch) > 0 {
 		if err := m.storeUTXOBatch(ctx, utxoBatch); err != nil {
 			return fmt.Errorf("failed to store utxo batch: %w", err)
@@ -212,11 +213,10 @@ func (m *Migrator[T, _]) Migrate(ctx context.Context) error {
 	return nil
 }
 
-func (m *Migrator[T, _]) storeUTXOBatch(
+func (m *Migrator) storeUTXOBatch(
 	ctx context.Context,
 	batch []*txOutputsEntry,
 ) error {
-
 	if len(batch) == 0 {
 		m.logger.Warn().Msg("the batch is empty")
 
@@ -258,24 +258,17 @@ func (m *Migrator[T, _]) storeUTXOBatch(
 	return m.updateUTXObatch(ctx, batch)
 }
 
-func (m *Migrator[T, UTS]) updateUTXObatch(
-	_ context.Context,
+func (m *Migrator) updateUTXObatch(
+	ctx context.Context,
 	batch []*txOutputsEntry,
 ) error {
-	return m.utxoStoreTxManager.Do(nil, func(ctx context.Context, tx txmanager.Transaction[T]) error {
-		utxoStoreWithTx, err := m.utxoStore.WithTx(tx)
-		if err != nil {
-			return err
+	for _, txEntry := range batch {
+		if err := m.utxoStore.AddTransactionOutputs(ctx, txEntry.txID, txEntry.outputs); err != nil {
+			return fmt.Errorf("failed to add transaction outputs: %w", err)
 		}
+	}
 
-		for _, txEntry := range batch {
-			if err := utxoStoreWithTx.AddTransactionOutputs(ctx, txEntry.txID, txEntry.outputs); err != nil {
-				return fmt.Errorf("failed to add transaction outputs: %w", err)
-			}
-		}
-
-		return nil
-	})
+	return nil
 }
 
 func ConvertUTXOlistToTransactionOutputList(utxos []*utxo.TxOut) []*utxostore.TransactionOutput {
