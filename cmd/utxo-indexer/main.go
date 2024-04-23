@@ -26,6 +26,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
 	"github.com/uptrace/uptrace-go/uptrace"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
 )
 
@@ -247,6 +248,8 @@ func runTxOutsGrpcGatewayServer(ctx context.Context, mainContainer *do.Injector,
 		return fmt.Errorf("failed to invoke grpc gateway mux: %w", err)
 	}
 
+	handler := otelhttp.NewHandler(gatewayMux, "")
+
 	lc := net.ListenConfig{}
 
 	ln, err := lc.Listen(ctx, "tcp4", cfg.UTXO.Service.HTTP.Address)
@@ -255,7 +258,7 @@ func runTxOutsGrpcGatewayServer(ctx context.Context, mainContainer *do.Injector,
 	}
 
 	go func() {
-		if err := http.Serve(ln, gatewayMux); err != nil {
+		if err := http.Serve(ln, handler); err != nil {
 			logger.Fatal().Err(err).Msg("failed to start http server")
 		}
 	}()
