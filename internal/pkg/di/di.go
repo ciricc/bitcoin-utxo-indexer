@@ -36,7 +36,8 @@ import (
 	grpchandlers "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/transport/grpc"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxospending"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
-	"github.com/ciricc/btc-utxo-indexer/pkg/api/grpc/UTXO"
+	"github.com/ciricc/btc-utxo-indexer/pkg/api/grpc/TxOuts_V1"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"github.com/samber/do"
@@ -491,28 +492,70 @@ func NewLogger(i *do.Injector) (*zerolog.Logger, error) {
 	return &log, nil
 }
 
-func GeUTXOGRPCHandlersConstructor[T redis.Pipeliner]() do.Provider[*grpchandlers.UTXOGrpcHandlers] {
-	return func(i *do.Injector) (*grpchandlers.UTXOGrpcHandlers, error) {
-		service, err := do.Invoke[*utxoservice.UTXOService](i)
-		if err != nil {
-			return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
-		}
-
-		return grpchandlers.New(service), nil
+func NewBlockchainV1GRPCHandlers(i *do.Injector) (*grpchandlers.TxOutsV1BlockchainHandlers, error) {
+	service, err := do.Invoke[*utxoservice.UTXOService](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
 	}
+
+	return grpchandlers.NewV1BlockchainHandlers(service), nil
+}
+
+func NewAddressV1GRPCHandlers(i *do.Injector) (*grpchandlers.TxOutsV1AddressesHandlers, error) {
+	service, err := do.Invoke[*utxoservice.UTXOService](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
+	}
+
+	return grpchandlers.NewV1AddressHandlers(service), nil
+}
+
+func NewTxOutsGatewayServeMux(i *do.Injector) (*runtime.ServeMux, error) {
+	addressHandlers, err := do.Invoke[*grpchandlers.TxOutsV1AddressesHandlers](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke address grpc handlers: %w", err)
+	}
+
+	blockchainHandlers, err := do.Invoke[*grpchandlers.TxOutsV1BlockchainHandlers](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke blockchain grpc handlers: %w", err)
+	}
+
+	ctx := context.Background()
+
+	mux := runtime.NewServeMux()
+
+	err = TxOuts_V1.RegisterAddressesHandlerServer(ctx, mux, addressHandlers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register addresses handlers: %w", err)
+	}
+
+	err = TxOuts_V1.RegisterBlockchainHandlerServer(ctx, mux, blockchainHandlers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register blockchain handlers: %w", err)
+	}
+
+	return mux, nil
 }
 
 func NewGRPCServer(i *do.Injector) (*grpc.Server, error) {
-	utxoHandlers, err := do.Invoke[*grpchandlers.UTXOGrpcHandlers](i)
+	addressHandlers, err := do.Invoke[*grpchandlers.TxOutsV1AddressesHandlers](i)
 	if err != nil {
-		return nil, fmt.Errorf("failed to invoke UTXO grpc handlers: %w", err)
+		return nil, fmt.Errorf("failed to invoke address grpc handlers: %w", err)
+	}
+
+	blockchainHandlers, err := do.Invoke[*grpchandlers.TxOutsV1BlockchainHandlers](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke blockchain grpc handlers: %w", err)
 	}
 
 	server := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
 
-	UTXO.RegisterUTXOServer(server, utxoHandlers)
+	TxOuts_V1.RegisterAddressesServer(server, addressHandlers)
+	TxOuts_V1.RegisterBlockchainServer(server, blockchainHandlers)
+
 	reflection.Register(server)
 
 	return server, nil

@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+package TxOuts.V1;
+
+option go_package = "github.com/ciricc/btc-utxo-indexer/pkg/api/grpc/TxOuts_V1";
+
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+	title: "TxOuts API"
+	version: "1.0"
+	contact: {
+      name: "TxOuts Project"
+      url: "https://t.me/onegoman"
+    }	
+  }
+  host: "api.xouts.io"
+  base_path: "/v1"
+  schemes: HTTPS
+};
+
+service Blockchain {	
+	// Returns information about the blockchain
+	// 
+	// It doesn't return information about the node's blockchain,
+	// because the service syncing with it independently
+	// So, the blockchain may not be synced with the bitcoin node
+	rpc GetInfo(google.protobuf.Empty) returns (BlockchainInfo) {
+		option (google.api.http) = {
+			get: "/blockchain/info" // <--
+		};
+  	}
+}
+
+message BlockchainInfo {
+	// Last block height
+	int64 height = 1;
+}
+
+// Addresses is the service working with the blockchain accounts by its addresses
+service Addresses {
+
+	// Returns balance in satoshi of the account by its encoded address
+	// 
+	// If the address is valid but not existing in the blockchain,
+	// method will return the zero balance amount.
+	// 
+	// Errors:
+	// INVALID_ARGMUENT - if the address has invalid format
+	rpc GetBalance(EncodedAddress) returns (Amount) {
+		option (google.api.http) = {
+			get: "/address/{value}/balance" 
+		};
+	};
+
+	// Returns the list of the unspent outputs by encoded address
+	// 
+	// If there is no unspent outputs by the valid address, it returns empty list.
+	// 
+	// Errors:
+	// INVALID_ARGUMENT - if the address has invalid format 
+	rpc GetUnspentOutputs(EncodedAddress) returns (TransactionOutputs) {
+		option (google.api.http) = {
+			get: "/address/{value}/unspentOutputs" // <--
+		};
+	}
+}
+
+message EncodedAddress {
+	// The base58 or bech32 encoded address
+	string value = 1 [json_name = "encoded_address"];
+}
+
+message Amount {
+	// Amount value in satoshi
+	uint64 value = 1;
+}
+
+
+message TransactionOutputs {
+	// List of transaction outputs
+	repeated TransactionOutput items = 1;
+}
+
+message TransactionOutput {
+	// Index of the output in the transaction outputs where this output created
+	int32 index = 1; 
+
+	// The transaction id of the output where is was created.
+	string tx_id = 2;
+
+	// Amount f the output
+	Amount amount = 3;
+
+	// The HEX value of the output's locking script
+	string script_pub_key = 4;
+}
+

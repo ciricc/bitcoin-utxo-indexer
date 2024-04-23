@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 
 	"github.com/ciricc/btc-utxo-indexer/config"
@@ -19,6 +20,7 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/restclient"
 	utxoservice "github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/service"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/utxo/utxostore"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
@@ -57,6 +59,10 @@ func main() {
 
 	if err := runUTXOGRPCServer(ctx, mainContainer, utxoContainer); err != nil {
 		logger.Fatal().Err(err).Msg("failed to run UTXO grpc server")
+	}
+
+	if err := runTxOutsGrpcGatewayServer(ctx, mainContainer, utxoContainer); err != nil {
+		logger.Fatal().Err(err).Msg("failed to run UTXO http server")
 	}
 
 	scannerContainer := do.New()
@@ -221,6 +227,38 @@ func initUptrace(utxoContainer *do.Injector) error {
 		uptrace.WithServiceVersion(cfg.Version),
 		uptrace.WithDeploymentEnvironment(cfg.Environment),
 	)
+
+	return nil
+}
+
+func runTxOutsGrpcGatewayServer(ctx context.Context, mainContainer *do.Injector, utxoContainer *do.Injector) error {
+	logger, err := do.Invoke[*zerolog.Logger](mainContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke logger: %w", err)
+	}
+
+	cfg, err := do.Invoke[*config.Config](mainContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke config: %w", err)
+	}
+
+	gatewayMux, err := do.Invoke[*runtime.ServeMux](utxoContainer)
+	if err != nil {
+		return fmt.Errorf("failed to invoke grpc gateway mux: %w", err)
+	}
+
+	lc := net.ListenConfig{}
+
+	ln, err := lc.Listen(ctx, "tcp4", cfg.UTXO.Service.HTTP.Address)
+	if err != nil {
+		return fmt.Errorf("failed to listen http address: %w", err)
+	}
+
+	go func() {
+		if err := http.Serve(ln, gatewayMux); err != nil {
+			logger.Fatal().Err(err).Msg("failed to start http server")
+		}
+	}()
 
 	return nil
 }

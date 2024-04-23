@@ -1,0 +1,150 @@
+swagger: "2.0"
+info:
+  title: TxOuts API
+  version: "1.0"
+  contact:
+    name: TxOuts Project
+    url: https://t.me/onegoman
+tags:
+  - name: Blockchain
+  - name: Addresses
+host: api.xouts.io
+basePath: /v1
+schemes:
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+paths:
+  /address/{encoded_address}/balance:
+    get:
+      summary: Returns balance in satoshi of the account by its encoded address
+      description: |-
+        If the address is valid but not existing in the blockchain,
+        method will return the zero balance amount.
+
+        Errors:
+        INVALID_ARGMUENT - if the address has invalid format
+      operationId: Addresses_GetBalance
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/V1Amount'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+        - name: encoded_address
+          description: The base58 or bech32 encoded address
+          in: path
+          required: true
+          type: string
+      tags:
+        - Addresses
+  /address/{encoded_address}/unspentOutputs:
+    get:
+      summary: Returns the list of the unspent outputs by encoded address
+      description: |-
+        If there is no unspent outputs by the valid address, it returns empty list.
+
+        Errors:
+        INVALID_ARGUMENT - if the address has invalid format
+      operationId: Addresses_GetUnspentOutputs
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/V1TransactionOutputs'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      parameters:
+        - name: encoded_address
+          description: The base58 or bech32 encoded address
+          in: path
+          required: true
+          type: string
+      tags:
+        - Addresses
+  /blockchain/info:
+    get:
+      summary: Returns information about the blockchain
+      description: |-
+        It doesn't return information about the node's blockchain,
+        because the service syncing with it independently
+        So, the blockchain may not be synced with the bitcoin node
+      operationId: Blockchain_GetInfo
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/V1BlockchainInfo'
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/rpcStatus'
+      tags:
+        - Blockchain
+definitions:
+  V1Amount:
+    type: object
+    properties:
+      value:
+        type: string
+        format: uint64
+        title: Amount value in satoshi
+  V1BlockchainInfo:
+    type: object
+    properties:
+      height:
+        type: string
+        format: int64
+        title: Last block height
+  V1TransactionOutput:
+    type: object
+    properties:
+      index:
+        type: integer
+        format: int32
+        title: Index of the output in the transaction outputs where this output created
+      txId:
+        type: string
+        description: The transaction id of the output where is was created.
+      amount:
+        $ref: '#/definitions/V1Amount'
+        title: Amount f the output
+      scriptPubKey:
+        type: string
+        title: The HEX value of the output's locking script
+  V1TransactionOutputs:
+    type: object
+    properties:
+      items:
+        type: array
+        items:
+          type: object
+          $ref: '#/definitions/V1TransactionOutput'
+        title: List of transaction outputs
+  protobufAny:
+    type: object
+    properties:
+      '@type':
+        type: string
+    additionalProperties: {}
+  rpcStatus:
+    type: object
+    properties:
+      code:
+        type: integer
+        format: int32
+      message:
+        type: string
+      details:
+        type: array
+        items:
+          type: object
+          $ref: '#/definitions/protobufAny'

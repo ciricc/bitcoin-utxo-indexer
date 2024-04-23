@@ -45,6 +45,10 @@ type Config struct {
 		} `yaml:"snapshot"`
 
 		Service struct {
+			HTTP struct {
+				Address string `yaml:"address"`
+			} `yaml:"http"`
+
 			GRPC struct {
 				Address string `yaml:"address"`
 			} `yaml:"grpc"`
@@ -138,6 +142,13 @@ func (c Config) Validate() error {
 		validation.Field(&c.Uptrace.DSN, is.URL),
 	); err != nil {
 		return fmt.Errorf("failed to validate uptrace options: %w", err)
+	}
+
+	if err := validation.ValidateStruct(
+		&c.UTXO.Service.HTTP,
+		validation.Field(&c.UTXO.Service.HTTP.Address, validation.Required, is.DialString),
+	); err != nil {
+		return fmt.Errorf("failed to validate utxo http service options: %w", err)
 	}
 
 	if err := validation.ValidateStruct(
