@@ -227,25 +227,16 @@ func (m *Migrator) storeUTXOBatch(
 	if !m.restoredLastSavedTxID {
 		m.logger.Debug().Msg("Trying to restore migration process...")
 
-		allFound := true
-
-		for _, txEntry := range batch {
-			found, err := m.utxoStore.AreExiststsOutputs(ctx, txEntry.txID)
-			if err != nil {
-				return fmt.Errorf("fialed to check outputs: %w", err)
-			}
-
-			allFound = allFound && found
-
-			if !found {
-				m.logger.Debug().Str("txID", txEntry.txID).Msg("not found tx entry")
-
-				m.restoredLastSavedTxID = true
-				break
-			}
+		found, err := m.utxoStore.AreExiststsOutputs(ctx, batch[len(batch)-1].txID)
+		if err != nil {
+			return fmt.Errorf("fialed to check outputs: %w", err)
 		}
 
-		if allFound {
+		if !found {
+			m.logger.Debug().Str("txID", batch[len(batch)-1].txID).Msg("not found tx entry")
+
+			m.restoredLastSavedTxID = true
+		} else {
 			m.logger.Debug().
 				Str("firstTxID", batch[0].txID).
 				Str("lastTxID", batch[len(batch)-1].txID).
