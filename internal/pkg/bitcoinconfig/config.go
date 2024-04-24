@@ -3,14 +3,16 @@ package bitcoinconfig
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/universalbitcioin/blockchain"
 )
 
 type BitcoinConfig struct {
-	params   *chaincfg.Params
-	decimals int
+	params                  *chaincfg.Params
+	decimals                int
+	blockGenerationInterval time.Duration
 }
 
 type BitcoinRESTClient interface {
@@ -20,6 +22,7 @@ type BitcoinRESTClient interface {
 func New(
 	btcClient BitcoinRESTClient,
 	decimals int,
+	blockGenerationInterval time.Duration,
 ) (*BitcoinConfig, error) {
 	bcInfo, err := btcClient.GetBlockchainInfo(context.Background())
 	if err != nil {
@@ -51,8 +54,9 @@ func New(
 	}
 
 	return &BitcoinConfig{
-		params:   useParams,
-		decimals: decimals,
+		params:                  useParams,
+		decimals:                decimals,
+		blockGenerationInterval: blockGenerationInterval,
 	}, nil
 }
 
@@ -62,4 +66,8 @@ func (bc *BitcoinConfig) GetParams() *chaincfg.Params {
 
 func (bc *BitcoinConfig) GetDecimals() int {
 	return bc.decimals
+}
+
+func (bc *BitcoinConfig) GetBlockGenerationInterval() time.Duration {
+	return bc.blockGenerationInterval
 }

@@ -25,6 +25,7 @@ func ProvideBitcoinCoreDeps(i *do.Injector) {
 	do.Provide(i, di.NewBitcoinConfig)
 	do.Provide(i, di.NewUniversalBitcoinRESTClient)
 	do.Provide(i, di.NewBitcoinBlocksIterator)
+	do.Provide(i, di.NewBlockchainInfo)
 }
 
 func ProvideMigratorDeps(i *do.Injector) {

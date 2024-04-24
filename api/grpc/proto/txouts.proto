@@ -39,6 +39,12 @@ service Blockchain {
 message BlockchainInfo {
 	// Last block height
 	int64 height = 1;
+	// Best blockchain's block hash
+	string best_block_hash = 2;
+	// Whether the indexer synced with the blockchain node
+	bool is_synced = 3;
+	// Decimals of the amounts
+	int32 decimals = 4;
 }
 
 // Addresses is the service working with the blockchain accounts by its addresses

@@ -4,6 +4,7 @@ environment: "dev"
 
 blockchainParams:
   decimals: 8
+  blockGenerationInterval: 10m
 
 blockchainState:
   path: "/home/ciricc/.bitcoin/chainstate"

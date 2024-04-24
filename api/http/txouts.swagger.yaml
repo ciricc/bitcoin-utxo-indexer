@@ -113,6 +113,16 @@ definitions:
         type: string
         format: int64
         title: Last block height
+      bestBlockHash:
+        type: string
+        title: Best blockchain's block hash
+      isSynced:
+        type: boolean
+        title: Whether the indexer synced with the blockchain node
+      decimals:
+        type: integer
+        format: int32
+        title: Decimals of the amounts
   V1TransactionOutput:
     type: object
     properties:

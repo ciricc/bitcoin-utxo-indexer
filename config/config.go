@@ -19,7 +19,8 @@ type Config struct {
 	} `yaml:"blockchainState"`
 
 	BlockchainParams struct {
-		Decimals int `yaml:"decimals"`
+		Decimals                int           `yaml:"decimals"`
+		BlockGenerationInterval time.Duration `yaml:"blockGenerationInterval"`
 	} `yaml:"blockchainParams"`
 
 	ChainstateMigration struct {
@@ -106,6 +107,18 @@ func (c Config) Validate() error {
 		validation.Field(&c.UTXO.Storage.InMemory.PersistenceFilePath, validation.Length(0, -1)),
 	); err != nil {
 		return fmt.Errorf("in-memory configuration validation error: %w", err)
+	}
+
+	if err := validation.ValidateStruct(
+		&c.BlockchainParams,
+		validation.Field(
+			&c.BlockchainParams.Decimals, validation.Min(1),
+		),
+		validation.Field(
+			&c.BlockchainParams.BlockGenerationInterval, validation.Min(time.Second),
+		),
+	); err != nil {
+		return fmt.Errorf("failed to validate the blockchain params configuration: %w", err)
 	}
 
 	if err := validation.ValidateStruct(

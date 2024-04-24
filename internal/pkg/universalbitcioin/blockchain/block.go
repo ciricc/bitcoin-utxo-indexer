@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bigjson"
 )
@@ -21,6 +22,23 @@ type BlockchainInfo struct {
 	Chain   string `json:"chain"`
 	Blocks  int64  `json:"blocks"`
 	Headers int64  `json:"headers"`
+	Time    int64  `json:"time"`
+}
+
+func (b *BlockchainInfo) GetBlocksCount() int64 {
+	return b.Blocks
+}
+
+func (b *BlockchainInfo) GetHeadersCount() int64 {
+	return b.Headers
+}
+
+func (b *BlockchainInfo) GetTime() time.Time {
+	return time.Unix(b.Time, 0)
+}
+
+func (b *BlockchainInfo) GetChain() string {
+	return b.Chain
 }
 
 // BlockHeader is a structure for storing the block header data

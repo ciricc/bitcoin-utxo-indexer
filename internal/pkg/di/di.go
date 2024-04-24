@@ -14,6 +14,7 @@ import (
 	"github.com/ciricc/btc-utxo-indexer/config"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoinblocksiterator"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/bitcoinconfig"
+	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchaininfo"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/scanner"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/blockchainscanner/state"
 	"github.com/ciricc/btc-utxo-indexer/internal/pkg/keyvalueabstraction/keyvaluestore"
@@ -441,7 +442,7 @@ func NewBitcoinConfig(i *do.Injector) (*bitcoinconfig.BitcoinConfig, error) {
 		return nil, fmt.Errorf("failed to invoke configuration: %w", err)
 	}
 
-	config, err := bitcoinconfig.New(restClient, cfg.BlockchainParams.Decimals)
+	config, err := bitcoinconfig.New(restClient, cfg.BlockchainParams.Decimals, cfg.BlockchainParams.BlockGenerationInterval)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bitcoin config: %w", err)
 	}
@@ -498,7 +499,17 @@ func NewBlockchainV1GRPCHandlers(i *do.Injector) (*grpchandlers.TxOutsV1Blockcha
 		return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
 	}
 
-	return grpchandlers.NewV1BlockchainHandlers(service), nil
+	btcConfig, err := do.Invoke[*bitcoinconfig.BitcoinConfig](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke bitcoin config: %w", err)
+	}
+
+	blockchainInfo, err := do.Invoke[*blockchaininfo.BlockchainInfo](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke blockchain info: %w", err)
+	}
+
+	return grpchandlers.NewV1BlockchainHandlers(service, btcConfig, blockchainInfo), nil
 }
 
 func NewAddressV1GRPCHandlers(i *do.Injector) (*grpchandlers.TxOutsV1AddressesHandlers, error) {
@@ -559,6 +570,30 @@ func NewGRPCServer(i *do.Injector) (*grpc.Server, error) {
 	reflection.Register(server)
 
 	return server, nil
+}
+
+func NewBlockchainInfo(i *do.Injector) (*blockchaininfo.BlockchainInfo, error) {
+	logger, err := do.Invoke[*zerolog.Logger](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke logger: %w", err)
+	}
+
+	bitcoinRestClient, err := do.Invoke[*restclient.RESTClient](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke bitcoin rest client: %w", err)
+	}
+
+	btcConfig, err := do.Invoke[*bitcoinconfig.BitcoinConfig](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke bitcoin coinfig: %w", err)
+	}
+
+	info, err := blockchaininfo.New(logger, bitcoinRestClient, btcConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create blockchain info service: %w", err)
+	}
+
+	return info, nil
 }
 
 func NewRedisTxManager(i *do.Injector) (*txmanager.TransactionManager[redis.Pipeliner], error) {
