@@ -11,7 +11,7 @@ import (
 )
 
 type UTXOStoreReadMethods interface {
-	GetOutputsByTxID(_ context.Context, txID string) ([]*utxostore.TransactionOutput, error)
+	GetOutputsByTxID(_ context.Context, txID string) (*utxostore.TransactionOutputs, error)
 	GetBlockHeight(_ context.Context) (int64, error)
 	GetBlockHash(_ context.Context) (string, error)
 }
@@ -73,8 +73,8 @@ func (u *UTXOSpender) NewCheckpointFromNextBlock(
 		return utxostore.NewUTXOSpendingCheckpoint(
 			nil,
 			newBlockPoint,
-			map[string][]*utxostore.TransactionOutput{},
-			map[string][]string{}, map[string][]*utxostore.TransactionOutput{}, map[string][]string{},
+			map[string]*utxostore.TransactionOutputs{},
+			map[string][]string{}, map[string]*utxostore.TransactionOutputs{}, map[string][]string{},
 		), nil
 	}
 
@@ -156,16 +156,20 @@ func extractAddressReferencesFromOutputs(
 
 func spendAllOutputs(
 	btcConfig BitcoinConfig,
-	spendingOutputs map[string][]*utxostore.TransactionOutput,
+	spendingOutputs map[string]*utxostore.TransactionOutputs,
 	newBlock *blockchain.Block,
-) (map[string][]*utxostore.TransactionOutput, error) {
-	newTxOutputs := map[string][]*utxostore.TransactionOutput{}
+) (map[string]*utxostore.TransactionOutputs, error) {
+	newTxOutputs := map[string]*utxostore.TransactionOutputs{}
 
-	for txID, outputs := range spendingOutputs {
-		newOutputs := make([]*utxostore.TransactionOutput, len(outputs))
-		copy(newOutputs, outputs)
+	for txID, txOutputsEntry := range spendingOutputs {
+		newOutputs := utxostore.TransactionOutputs{
+			BlockHeight: txOutputsEntry.BlockHeight,
+			Outputs:     make([]*utxostore.TransactionOutput, len(txOutputsEntry.Outputs)),
+		}
 
-		newTxOutputs[txID] = newOutputs
+		copy(newOutputs.Outputs, txOutputsEntry.Outputs)
+
+		newTxOutputs[txID] = &newOutputs
 	}
 
 	for _, tx := range newBlock.GetTransactions() {
@@ -174,7 +178,10 @@ func spendAllOutputs(
 			return nil, fmt.Errorf("failed to cast transaction outputs to store outputs: %w", err)
 		}
 
-		newTxOutputs[tx.GetID()] = spendableOutputs
+		newTxOutputs[tx.GetID()] = &utxostore.TransactionOutputs{
+			BlockHeight: newBlock.GetHeight(),
+			Outputs:     spendableOutputs,
+		}
 
 		for _, input := range tx.GetInputs() {
 			// spending all outputs
@@ -184,16 +191,16 @@ func spendAllOutputs(
 
 			spendingOutput := input.SpendingOutput
 
-			txOutputs, ok := newTxOutputs[spendingOutput.GetTxID()]
+			txOutputsEntry, ok := newTxOutputs[spendingOutput.GetTxID()]
 			if !ok {
 				return nil, ErrSpendingOutputNotFound
 			}
 
-			if len(txOutputs) < spendingOutput.VOut+1 {
+			if len(txOutputsEntry.Outputs) < spendingOutput.VOut+1 {
 				return nil, ErrSpendingOutputNotFound
 			}
 
-			txOutputs[spendingOutput.VOut] = nil
+			txOutputsEntry.Outputs[spendingOutput.VOut] = nil
 		}
 	}
 
@@ -238,12 +245,12 @@ func getAllSpendableOutputs(btcConfig BitcoinConfig, tx *blockchain.Transaction)
 }
 
 func countAddressOutputs(
-	txOutputs map[string][]*utxostore.TransactionOutput,
+	txOutputs map[string]*utxostore.TransactionOutputs,
 ) (map[string]map[string]int, error) {
 	addressOutputsCount := map[string]map[string]int{}
 
-	for txID, outputs := range txOutputs {
-		for _, output := range outputs {
+	for txID, txOutputsEntry := range txOutputs {
+		for _, output := range txOutputsEntry.Outputs {
 			if output == nil {
 				continue
 			}
@@ -267,7 +274,7 @@ func countAddressOutputs(
 }
 
 func derefAddresses(
-	spendingOutputs map[string][]*utxostore.TransactionOutput,
+	spendingOutputs map[string]*utxostore.TransactionOutputs,
 	newBlock *blockchain.Block,
 ) (map[string][]string, error) {
 	addressesOutputsCount, err := countAddressOutputs(spendingOutputs)
@@ -291,16 +298,16 @@ func derefAddresses(
 				continue
 			}
 
-			txOutputs, ok := spendingOutputs[output.GetTxID()]
+			txOutputsEntry, ok := spendingOutputs[output.GetTxID()]
 			if !ok {
 				return nil, ErrSpendingOutputNotFound
 			}
 
-			if len(txOutputs) < output.VOut+1 {
+			if len(txOutputsEntry.Outputs) < output.VOut+1 {
 				return nil, ErrSpendingOutputNotFound
 			}
 
-			spentOutput := txOutputs[output.VOut]
+			spentOutput := txOutputsEntry.Outputs[output.VOut]
 
 			addresses, err := spentOutput.GetAddresses()
 			if err != nil {
@@ -328,8 +335,8 @@ func derefAddresses(
 func (u *UTXOSpender) extractSpendingOutputsFromBlock(
 	ctx context.Context,
 	block *blockchain.Block,
-) (map[string][]*utxostore.TransactionOutput, error) {
-	outputs := map[string][]*utxostore.TransactionOutput{}
+) (map[string]*utxostore.TransactionOutputs, error) {
+	outputs := map[string]*utxostore.TransactionOutputs{}
 	txIDsFromCurrentBlock := map[string]bool{}
 
 	for _, tx := range block.GetTransactions() {

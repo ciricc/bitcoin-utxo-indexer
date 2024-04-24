@@ -23,8 +23,8 @@ type ChainstateDB interface {
 
 type UTXOStore interface {
 	AreExiststsOutputs(ctx context.Context, txID string) (bool, error)
-	AddTransactionOutputsBatch(ctx context.Context, batch map[string][]*utxostore.TransactionOutput) error
-	AddTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
+	AddTransactionOutputsBatch(ctx context.Context, batch map[string]*utxostore.TransactionOutputs) error
+	AddTransactionOutputs(ctx context.Context, txID string, outputs *utxostore.TransactionOutputs) error
 	SetBlockHeight(ctx context.Context, blockHeight int64) error
 	SetBlockHash(ctx context.Context, blockHash string) error
 	Flush(ctx context.Context) error
@@ -36,8 +36,9 @@ type BitcoinConfig interface {
 }
 
 type txOutputsEntry struct {
-	txID    string
-	outputs []*utxostore.TransactionOutput
+	txID        string
+	blockHeight int64
+	outputs     []*utxostore.TransactionOutput
 }
 
 type Migrator struct {
@@ -141,8 +142,9 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 				// migrate utxo grouped by tx id
 				outputs := ConvertUTXOlistToTransactionOutputList(utxoByTxID)
 				utxoBatch = append(utxoBatch, &txOutputsEntry{
-					txID:    currentTxID,
-					outputs: outputs,
+					txID:        currentTxID,
+					blockHeight: int64(utxoByTxID[len(utxoByTxID)-1].GetCoin().BlockHeight()),
+					outputs:     outputs,
 				})
 			}
 
@@ -176,8 +178,9 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 		// migrate utxo grouped by tx id
 		outputs := ConvertUTXOlistToTransactionOutputList(utxoByTxID)
 		utxoBatch = append(utxoBatch, &txOutputsEntry{
-			txID:    currentTxID,
-			outputs: outputs,
+			txID:        currentTxID,
+			blockHeight: int64(utxoByTxID[len(utxoByTxID)-1].GetCoin().BlockHeight()),
+			outputs:     outputs,
 		})
 	}
 
@@ -254,9 +257,12 @@ func (m *Migrator) updateUTXObatch(
 	ctx context.Context,
 	batch []*txOutputsEntry,
 ) error {
-	newBatch := map[string][]*utxostore.TransactionOutput{}
+	newBatch := map[string]*utxostore.TransactionOutputs{}
 	for _, txEntry := range batch {
-		newBatch[txEntry.txID] = txEntry.outputs
+		newBatch[txEntry.txID] = &utxostore.TransactionOutputs{
+			BlockHeight: txEntry.blockHeight,
+			Outputs:     txEntry.outputs,
+		}
 	}
 
 	if err := m.utxoStore.AddTransactionOutputsBatch(ctx, newBatch); err != nil {

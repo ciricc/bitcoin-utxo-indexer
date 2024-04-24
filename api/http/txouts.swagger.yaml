@@ -17,7 +17,7 @@ consumes:
 produces:
   - application/json
 paths:
-  /address/{encoded_address}/balance:
+  /address/{encodedAddress}/balance:
     get:
       summary: Returns balance in satoshi of the account by its encoded address
       description: |-
@@ -31,20 +31,20 @@ paths:
         "200":
           description: A successful response.
           schema:
-            $ref: '#/definitions/V1Amount'
+            $ref: '#/definitions/V1AccountBalance'
         default:
           description: An unexpected error response.
           schema:
             $ref: '#/definitions/rpcStatus'
       parameters:
-        - name: encoded_address
+        - name: encodedAddress
           description: The base58 or bech32 encoded address
           in: path
           required: true
           type: string
       tags:
         - Addresses
-  /address/{encoded_address}/unspentOutputs:
+  /address/{encodedAddress}/unspentOutputs:
     get:
       summary: Returns the list of the unspent outputs by encoded address
       description: |-
@@ -63,7 +63,7 @@ paths:
           schema:
             $ref: '#/definitions/rpcStatus'
       parameters:
-        - name: encoded_address
+        - name: encodedAddress
           description: The base58 or bech32 encoded address
           in: path
           required: true
@@ -90,6 +90,15 @@ paths:
       tags:
         - Blockchain
 definitions:
+  V1AccountBalance:
+    type: object
+    properties:
+      confirmed:
+        $ref: '#/definitions/V1Amount'
+        title: The balance of the account which confirmed by the blocks
+      unconfirmed:
+        $ref: '#/definitions/V1Amount'
+        title: The balance of the account which was not confirmed yet by the blocks
   V1Amount:
     type: object
     properties:
@@ -117,9 +126,15 @@ definitions:
       amount:
         $ref: '#/definitions/V1Amount'
         title: Amount f the output
-      scriptPubKey:
+      script:
         type: string
         title: The HEX value of the output's locking script
+      blockHeight:
+        type: string
+        format: int64
+        title: |-
+          In which block this output stored
+          You can use this block height to get confirmation status of the output
   V1TransactionOutputs:
     type: object
     properties:

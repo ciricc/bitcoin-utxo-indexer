@@ -126,11 +126,17 @@ func TestSpendOutputs(t *testing.T) {
 	oneSatAmount, err := blockchain.NewAmountValueFromString("0.00000001")
 	require.NoError(t, err)
 
-	newOutputs, err := spendAllOutputs(&btcConfigMock{}, map[string][]*utxostore.TransactionOutput{
+	newOutputs, err := spendAllOutputs(&btcConfigMock{}, map[string]*utxostore.TransactionOutputs{
 		"1": {
-			zeroOutput,
+			BlockHeight: 1,
+			Outputs: []*utxostore.TransactionOutput{
+				zeroOutput,
+			},
 		},
 	}, &blockchain.Block{
+		BlockHeader: blockchain.BlockHeader{
+			Height: 2,
+		},
 		Transactions: []*blockchain.Transaction{
 			{
 				ID: "2",
@@ -157,9 +163,15 @@ func TestSpendOutputs(t *testing.T) {
 
 	require.NoError(t, err)
 
-	require.Equal(t, map[string][]*utxostore.TransactionOutput{
-		"1": {nil},
-		"2": {zeroOutput},
+	require.Equal(t, map[string]*utxostore.TransactionOutputs{
+		"1": {
+			BlockHeight: 1,
+			Outputs:     []*utxostore.TransactionOutput{nil},
+		},
+		"2": {
+			BlockHeight: 2,
+			Outputs:     []*utxostore.TransactionOutput{zeroOutput},
+		},
 	}, newOutputs)
 }
 
@@ -167,15 +179,21 @@ func TestAddressCountOutputs(t *testing.T) {
 	anotherOutput, err := newOutputWithP2PKH(thirdAddressHashHex)
 	require.NoError(t, err)
 
-	addressOutputsCount, err := countAddressOutputs(map[string][]*utxostore.TransactionOutput{
+	addressOutputsCount, err := countAddressOutputs(map[string]*utxostore.TransactionOutputs{
 		"1": {
-			anotherOutput,
-			zeroOutput,
+			BlockHeight: 1,
+			Outputs: []*utxostore.TransactionOutput{
+				anotherOutput,
+				zeroOutput,
+			},
 		},
 		"2": {
-			nil,
-			zeroOutput,
-			zeroOutput,
+			BlockHeight: 1,
+			Outputs: []*utxostore.TransactionOutput{
+				nil,
+				zeroOutput,
+				zeroOutput,
+			},
 		},
 	})
 
@@ -197,13 +215,19 @@ func TestDereferenceAddress(t *testing.T) {
 	thirdOutput, err := newOutputWithP2PKH(thirdAddressHashHex)
 	require.NoError(t, err)
 
-	dereferencedAddresses, err := derefAddresses(map[string][]*utxostore.TransactionOutput{
+	dereferencedAddresses, err := derefAddresses(map[string]*utxostore.TransactionOutputs{
 		"1": {
-			zeroOutput,
+			BlockHeight: 1,
+			Outputs: []*utxostore.TransactionOutput{
+				zeroOutput,
+			},
 		},
 		"2": {
-			zeroOutput,
-			thirdOutput,
+			BlockHeight: 1,
+			Outputs: []*utxostore.TransactionOutput{
+				zeroOutput,
+				thirdOutput,
+			},
 		},
 	}, &blockchain.Block{
 		Transactions: []*blockchain.Transaction{

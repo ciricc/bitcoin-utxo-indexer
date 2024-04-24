@@ -220,8 +220,8 @@ func (u *Store[T]) isConsistenceWithCheckpoint(
 		}
 	}
 
-	for txID, outputs := range checkpoint.GetNewTransactionsOutputs() {
-		if isAllSpent(outputs) {
+	for txID, txOutputsEntry := range checkpoint.GetNewTransactionsOutputs() {
+		if isAllSpent(txOutputsEntry.Outputs) {
 			_, err = u.getOutputsByTxID(ctx, txID)
 			if err != nil {
 				if errors.Is(err, ErrNotFound) {
@@ -238,7 +238,7 @@ func (u *Store[T]) isConsistenceWithCheckpoint(
 				return false, fmt.Errorf("failed to get transaction outputs: %w", err)
 			}
 
-			if !reflect.DeepEqual(currentOutputs, outputs) {
+			if !reflect.DeepEqual(currentOutputs, txOutputsEntry) {
 				return false, nil
 			}
 		}
@@ -418,21 +418,21 @@ func (u *Store[T]) getUnspentOutputsByAddress(
 	}
 
 	type outputsEntry struct {
-		txID    string
-		outputs []*TransactionOutput
+		txID         string
+		outputsEntry *TransactionOutputs
 	}
 
 	outputsEntries := []*outputsEntry{}
 
 	if err := u.s.MulGet(ctx, func(ctx context.Context, key string) any {
 		entry := outputsEntry{
-			txID:    txIDKeysFormatted[key],
-			outputs: []*TransactionOutput{},
+			txID:         txIDKeysFormatted[key],
+			outputsEntry: &TransactionOutputs{},
 		}
 
 		outputsEntries = append(outputsEntries, &entry)
 
-		return &entry.outputs
+		return &entry.outputsEntry
 	}, txIDKeys...); err != nil {
 		return nil, fmt.Errorf("failed to get tx outputs: %w", err)
 	}
@@ -445,9 +445,9 @@ func (u *Store[T]) getUnspentOutputsByAddress(
 
 	for _, entry := range outputsEntries {
 		txID := entry.txID
-		outputs := entry.outputs
+		txOutputsEntry := entry.outputsEntry
 
-		for vout, output := range outputs {
+		for vout, output := range txOutputsEntry.Outputs {
 			if !isSpentOutput(output) {
 				addresses, err := output.GetAddresses()
 				if err != nil {
@@ -468,9 +468,10 @@ func (u *Store[T]) getUnspentOutputsByAddress(
 				}
 
 				res = append(res, &UTXOEntry{
-					TxID:   txID,
-					Vout:   uint32(vout),
-					Output: outputs[vout],
+					TxID:        txID,
+					Vout:        uint32(vout),
+					Output:      txOutputsEntry.Outputs[vout],
+					BlockHeight: txOutputsEntry.BlockHeight,
 				})
 			}
 		}
@@ -482,7 +483,7 @@ func (u *Store[T]) getUnspentOutputsByAddress(
 func (u *Store[T]) GetOutputsByTxID(
 	ctx context.Context,
 	txID string,
-) ([]*TransactionOutput, error) {
+) (*TransactionOutputs, error) {
 	if !u.isConsist {
 		return nil, ErrInconsistenceState
 	}
@@ -493,8 +494,8 @@ func (u *Store[T]) GetOutputsByTxID(
 func (u *Store[T]) getOutputsByTxID(
 	ctx context.Context,
 	txID string,
-) ([]*TransactionOutput, error) {
-	var outputs []*TransactionOutput
+) (*TransactionOutputs, error) {
+	var outputs *TransactionOutputs
 
 	ok, err := u.s.Get(ctx, newTransactionIDKey(u.dbVer, txID).String(), &outputs)
 	if err != nil {
@@ -650,21 +651,21 @@ func (u *Store[T]) spendOutputFromList(
 func (u *Store[T]) SetTransactionOutputs(
 	ctx context.Context,
 	txID string,
-	newOutputs []*TransactionOutput,
+	newTxOutputsEntry *TransactionOutputs,
 ) error {
 	if !u.isConsist {
 		return ErrInconsistenceState
 	}
 
-	return u.setTransactionOutputs(ctx, txID, newOutputs)
+	return u.setTransactionOutputs(ctx, txID, newTxOutputsEntry)
 }
 
 func (u *Store[T]) setTransactionOutputs(
 	ctx context.Context,
 	txID string,
-	newOutputs []*TransactionOutput,
+	newTxOutputsEntry *TransactionOutputs,
 ) error {
-	err := u.setNewTxOutputs(ctx, txID, newOutputs)
+	err := u.setNewTxOutputs(ctx, txID, newTxOutputsEntry)
 	if err != nil {
 		return err
 	}
@@ -710,7 +711,7 @@ func (u *Store[T]) spendOutputsWithNewBlockInfo(
 	ctx context.Context,
 	newBlockHash string,
 	newBlockHeight int64,
-	newTxOutputs map[string][]*TransactionOutput,
+	newTxOutputs map[string]*TransactionOutputs,
 	dereferencedAddresses map[string][]string,
 	newAddressReferences map[string][]string,
 ) error {
@@ -740,9 +741,9 @@ func (u *Store[T]) spendOutputsWithNewBlockInfo(
 			return fmt.Errorf("failed to set block height: %w", err)
 		}
 
-		for txID, outputs := range newTxOutputs {
+		for txID, txOutputsEntry := range newTxOutputs {
 			allSpent := true
-			for _, output := range outputs {
+			for _, output := range txOutputsEntry.Outputs {
 				if !isSpentOutput(output) {
 					allSpent = false
 					break
@@ -752,7 +753,7 @@ func (u *Store[T]) spendOutputsWithNewBlockInfo(
 			if allSpent {
 				selfWithTx.spendAllOutputs(ctx, txID)
 			} else {
-				selfWithTx.setTransactionOutputs(ctx, txID, outputs)
+				selfWithTx.setTransactionOutputs(ctx, txID, txOutputsEntry)
 			}
 		}
 
@@ -829,7 +830,7 @@ func (u *Store[T]) areExistsOutputs(
 	ctx context.Context,
 	txID string,
 ) (bool, error) {
-	var outputs []any
+	var outputs any
 	var txOutputsKey = newTransactionIDKey(u.dbVer, txID)
 
 	found, err := u.s.Get(ctx, txOutputsKey.String(), &outputs)
@@ -843,16 +844,16 @@ func (u *Store[T]) areExistsOutputs(
 func (u *Store[T]) AddTransactionOutputs(
 	ctx context.Context,
 	txID string,
-	outputs []*TransactionOutput,
+	txOutputsEntry *TransactionOutputs,
 ) error {
 	if !u.isConsist {
 		return ErrInconsistenceState
 	}
 
-	return u.addTransactionOutputs(ctx, txID, outputs)
+	return u.addTransactionOutputs(ctx, txID, txOutputsEntry)
 }
 
-func (u *Store[T]) AddTransactionOutputsBatch(ctx context.Context, batch map[string][]*TransactionOutput) error {
+func (u *Store[T]) AddTransactionOutputsBatch(ctx context.Context, batch map[string]*TransactionOutputs) error {
 	if !u.isConsist {
 		return ErrInconsistenceState
 	}
@@ -862,7 +863,7 @@ func (u *Store[T]) AddTransactionOutputsBatch(ctx context.Context, batch map[str
 
 func (u *Store[T]) addTransactionOutputsBatch(
 	ctx context.Context,
-	batch map[string][]*TransactionOutput,
+	batch map[string]*TransactionOutputs,
 ) error {
 	return u.txManager.Do(ctx, nil, func(ctx context.Context, tx txmanager.Transaction[T]) error {
 		selfWithTx, err := u.WithTx(tx)
@@ -870,8 +871,8 @@ func (u *Store[T]) addTransactionOutputsBatch(
 			return fmt.Errorf("failed to begin transaction: %w", err)
 		}
 
-		for txID, outputs := range batch {
-			err := selfWithTx.addTransactionOutputs(ctx, txID, outputs)
+		for txID, txOutputsEntry := range batch {
+			err := selfWithTx.addTransactionOutputs(ctx, txID, txOutputsEntry)
 			if err != nil {
 				return err
 			}
@@ -884,14 +885,14 @@ func (u *Store[T]) addTransactionOutputsBatch(
 func (u *Store[T]) addTransactionOutputs(
 	ctx context.Context,
 	txID string,
-	outputs []*TransactionOutput,
+	txOutputsEntry *TransactionOutputs,
 ) error {
-	err := u.setNewTxOutputs(ctx, txID, outputs)
+	err := u.setNewTxOutputs(ctx, txID, txOutputsEntry)
 	if err != nil {
 		return err
 	}
 
-	err = u.createAddressUTXOTxIdIndex(ctx, txID, outputs)
+	err = u.createAddressUTXOTxIdIndex(ctx, txID, txOutputsEntry.Outputs)
 	if err != nil {
 		return err
 	}
@@ -899,10 +900,10 @@ func (u *Store[T]) addTransactionOutputs(
 	return nil
 }
 
-func (u *Store[T]) setNewTxOutputs(ctx context.Context, txID string, outputs []*TransactionOutput) error {
+func (u *Store[T]) setNewTxOutputs(ctx context.Context, txID string, txOutputsEntry *TransactionOutputs) error {
 	txOutputsKey := newTransactionIDKey(u.dbVer, txID)
 
-	err := u.s.Set(ctx, txOutputsKey.String(), outputs)
+	err := u.s.Set(ctx, txOutputsKey.String(), txOutputsEntry)
 	if err != nil {
 		return fmt.Errorf("failed to store tx outputs: %w", err)
 	}

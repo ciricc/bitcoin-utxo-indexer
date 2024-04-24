@@ -15,16 +15,9 @@ import (
 )
 
 type UTXOStoreMethods interface {
-	GetOutputsByTxID(ctx context.Context, txID string) ([]*utxostore.TransactionOutput, error)
-	SpendOutput(ctx context.Context, txID string, idx int) ([]string, *utxostore.TransactionOutput, error)
 	GetUnspentOutputsByAddress(ctx context.Context, address string) ([]*utxostore.UTXOEntry, error)
 	GetBlockHeight(ctx context.Context) (int64, error)
 	GetBlockHash(ctx context.Context) (string, error)
-	SetBlockHeight(ctx context.Context, height int64) error
-	SetBlockHash(ctx context.Context, hash string) error
-	SpendAllOutputs(ctx context.Context, txID string) error
-	SetTransactionOutputs(ctx context.Context, txID string, outputs []*utxostore.TransactionOutput) error
-	RemoveAddressTxIDs(ctx context.Context, address string, txIDs []string) error
 	CommitCheckpoint(ctx context.Context, checkpoint *utxostore.UTXOSpendingCheckpoint) error
 }
 

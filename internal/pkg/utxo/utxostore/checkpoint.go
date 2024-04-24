@@ -11,14 +11,14 @@ type UTXOSpendingCheckpoint struct {
 
 	// List of the transaction outputs with its before migrating content
 	// This outputs needs to be recovered when you make DOWN migration
-	TxsBeforeUpdate map[string][]*TransactionOutput `json:"txs_before_update" msgpack:"txs_before_update"`
+	TxsBeforeUpdate map[string]*TransactionOutputs `json:"txs_before_update" msgpack:"txs_before_update"`
 
 	// List of addressess needs to be dereferenced after UP migration
 	DereferencedAddressesTxs map[string][]string `json:"dereferenced_addresses_txs" msgpack:"dereferenced_addresses_txs"`
 
 	// List of the new values for the transactions outputs
 	// This transactions needs to be added when you make UP migration
-	NewTxOutputs map[string][]*TransactionOutput `json:"new_tx_outputs" msgpack:"new_tx_outputs"`
+	NewTxOutputs map[string]*TransactionOutputs `json:"new_tx_outputs" msgpack:"new_tx_outputs"`
 
 	// List of the new addresses references
 	// This txs references needs to be added into address index when
@@ -34,9 +34,9 @@ type CheckpointBlock struct {
 func NewUTXOSpendingCheckpoint(
 	prevBlock *CheckpointBlock,
 	newBlock *CheckpointBlock,
-	txsBeforeUpdate map[string][]*TransactionOutput,
+	txsBeforeUpdate map[string]*TransactionOutputs,
 	dereferencedAddressesTxs map[string][]string,
-	newTxOutputs map[string][]*TransactionOutput,
+	newTxOutputs map[string]*TransactionOutputs,
 	newAddreessReferences map[string][]string,
 ) *UTXOSpendingCheckpoint {
 	return &UTXOSpendingCheckpoint{
@@ -57,11 +57,11 @@ func (u *UTXOSpendingCheckpoint) GetDereferencedAddressesTxs() map[string][]stri
 	return u.DereferencedAddressesTxs
 }
 
-func (u *UTXOSpendingCheckpoint) GetTransactionsBeforeUpdate() map[string][]*TransactionOutput {
+func (u *UTXOSpendingCheckpoint) GetTransactionsBeforeUpdate() map[string]*TransactionOutputs {
 	return u.TxsBeforeUpdate
 }
 
-func (u *UTXOSpendingCheckpoint) GetNewTransactionsOutputs() map[string][]*TransactionOutput {
+func (u *UTXOSpendingCheckpoint) GetNewTransactionsOutputs() map[string]*TransactionOutputs {
 	return u.NewTxOutputs
 }
 

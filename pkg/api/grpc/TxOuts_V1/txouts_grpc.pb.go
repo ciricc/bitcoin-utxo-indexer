@@ -135,7 +135,7 @@ type AddressesClient interface {
 	//
 	// Errors:
 	// INVALID_ARGMUENT - if the address has invalid format
-	GetBalance(ctx context.Context, in *EncodedAddress, opts ...grpc.CallOption) (*Amount, error)
+	GetBalance(ctx context.Context, in *EncodedAddress, opts ...grpc.CallOption) (*AccountBalance, error)
 	// Returns the list of the unspent outputs by encoded address
 	//
 	// If there is no unspent outputs by the valid address, it returns empty list.
@@ -153,8 +153,8 @@ func NewAddressesClient(cc grpc.ClientConnInterface) AddressesClient {
 	return &addressesClient{cc}
 }
 
-func (c *addressesClient) GetBalance(ctx context.Context, in *EncodedAddress, opts ...grpc.CallOption) (*Amount, error) {
-	out := new(Amount)
+func (c *addressesClient) GetBalance(ctx context.Context, in *EncodedAddress, opts ...grpc.CallOption) (*AccountBalance, error) {
+	out := new(AccountBalance)
 	err := c.cc.Invoke(ctx, Addresses_GetBalance_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -182,7 +182,7 @@ type AddressesServer interface {
 	//
 	// Errors:
 	// INVALID_ARGMUENT - if the address has invalid format
-	GetBalance(context.Context, *EncodedAddress) (*Amount, error)
+	GetBalance(context.Context, *EncodedAddress) (*AccountBalance, error)
 	// Returns the list of the unspent outputs by encoded address
 	//
 	// If there is no unspent outputs by the valid address, it returns empty list.
@@ -197,7 +197,7 @@ type AddressesServer interface {
 type UnimplementedAddressesServer struct {
 }
 
-func (UnimplementedAddressesServer) GetBalance(context.Context, *EncodedAddress) (*Amount, error) {
+func (UnimplementedAddressesServer) GetBalance(context.Context, *EncodedAddress) (*AccountBalance, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBalance not implemented")
 }
 func (UnimplementedAddressesServer) GetUnspentOutputs(context.Context, *EncodedAddress) (*TransactionOutputs, error) {

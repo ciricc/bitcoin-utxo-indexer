@@ -14,6 +14,11 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+type TransactionOutputs struct {
+	BlockHeight int64                `json:"0" msgpack:"0"`
+	Outputs     []*TransactionOutput `json:"1" msgpack:"1"`
+}
+
 type TransactionOutput struct {
 	CompressedScript []byte `json:"0" msgpack:"0"`
 	CompressedAmount uint64 `json:"1" msgpack:"1"`
@@ -74,7 +79,8 @@ func (t *TransactionOutput) GetAddresses() ([]string, error) {
 }
 
 type UTXOEntry struct {
-	TxID   string
-	Vout   uint32
-	Output *TransactionOutput
+	TxID        string
+	Vout        uint32
+	Output      *TransactionOutput
+	BlockHeight int64
 }

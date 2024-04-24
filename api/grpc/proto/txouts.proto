@@ -51,7 +51,7 @@ service Addresses {
 	// 
 	// Errors:
 	// INVALID_ARGMUENT - if the address has invalid format
-	rpc GetBalance(EncodedAddress) returns (Amount) {
+	rpc GetBalance(EncodedAddress) returns (AccountBalance) {
 		option (google.api.http) = {
 			get: "/address/{value}/balance" 
 		};
@@ -72,7 +72,14 @@ service Addresses {
 
 message EncodedAddress {
 	// The base58 or bech32 encoded address
-	string value = 1 [json_name = "encoded_address"];
+	string value = 1 [json_name = "encodedAddress"];
+}
+
+message AccountBalance {
+	// The balance of the account which confirmed by the blocks
+	Amount confirmed = 1;
+	// The balance of the account which was not confirmed yet by the blocks
+	Amount unconfirmed = 2;
 }
 
 message Amount {
@@ -91,12 +98,16 @@ message TransactionOutput {
 	int32 index = 1; 
 
 	// The transaction id of the output where is was created.
-	string tx_id = 2;
+	string tx_id = 2; 
 
 	// Amount f the output
 	Amount amount = 3;
 
 	// The HEX value of the output's locking script
-	string script_pub_key = 4;
+	string script = 4;
+	
+	// In which block this output stored
+	// You can use this block height to get confirmation status of the output 
+	int64 block_height = 5; 
 }
 

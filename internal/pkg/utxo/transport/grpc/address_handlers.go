@@ -38,7 +38,7 @@ func NewV1AddressHandlers(service UTXOService) *TxOutsV1AddressesHandlers {
 func (u *TxOutsV1AddressesHandlers) GetBalance(
 	ctx context.Context,
 	address *TxOuts_V1.EncodedAddress,
-) (*TxOuts_V1.Amount, error) {
+) (*TxOuts_V1.AccountBalance, error) {
 	outputs, err := u.s.GetUTXOByBase58Address(ctx, address.Value)
 	if err != nil {
 		if errors.Is(err, utxoservice.ErrInvalidBase58Address) {
@@ -53,8 +53,14 @@ func (u *TxOutsV1AddressesHandlers) GetBalance(
 		totalAmount += output.Output.GetAmount()
 	}
 
-	return &TxOuts_V1.Amount{
-		Value: totalAmount,
+	// TODO: implement confirmation logic
+	return &TxOuts_V1.AccountBalance{
+		Confirmed: &TxOuts_V1.Amount{
+			Value: totalAmount,
+		},
+		Unconfirmed: &TxOuts_V1.Amount{
+			Value: totalAmount,
+		},
 	}, nil
 }
 
@@ -83,8 +89,9 @@ func (u *TxOutsV1AddressesHandlers) GetUnspentOutputs(
 			Amount: &TxOuts_V1.Amount{
 				Value: output.Output.GetAmount(),
 			},
-			ScriptPubKey: hex.EncodeToString(scriptBytes),
-			Index:        int32(output.Vout),
+			Script:      hex.EncodeToString(scriptBytes),
+			Index:       int32(output.Vout),
+			BlockHeight: output.BlockHeight,
 		})
 	}
 
