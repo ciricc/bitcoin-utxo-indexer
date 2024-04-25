@@ -47,6 +47,7 @@ func ProvideUTXOServiceDeps(i *do.Injector) {
 	do.Provide(i, di.GetUTXOServiceConstructor[redis.Pipeliner]())
 	do.Provide(i, di.NewAddressV1GRPCHandlers)
 	do.Provide(i, di.NewBlockchainV1GRPCHandlers)
+	do.Provide(i, di.NewHealthGRPCHandlers)
 	do.Provide(i, di.NewGRPCServer)
 	do.Provide(i, di.NewTxOutsGatewayServeMux)
 }

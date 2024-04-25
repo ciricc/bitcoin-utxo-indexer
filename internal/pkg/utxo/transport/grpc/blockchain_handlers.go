@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type BlockchainService interface {
+type UTXOBlockchainService interface {
 	// GetBlockHeight must return the block height
 	GetBlockHeight(ctx context.Context) (int64, error)
 
@@ -27,13 +27,13 @@ type BlockchainInfo interface {
 type TxOutsV1BlockchainHandlers struct {
 	TxOuts_V1.UnimplementedBlockchainServer
 
-	s              BlockchainService
+	s              UTXOBlockchainService
 	blockchainInfo BlockchainInfo
 	btcConfig      BitcoinConfig
 }
 
 func NewV1BlockchainHandlers(
-	s BlockchainService,
+	s UTXOBlockchainService,
 	btcConfig BitcoinConfig,
 	blockchainInfo BlockchainInfo,
 ) *TxOutsV1BlockchainHandlers {

@@ -46,6 +46,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -512,6 +513,28 @@ func NewBlockchainV1GRPCHandlers(i *do.Injector) (*grpchandlers.TxOutsV1Blockcha
 	return grpchandlers.NewV1BlockchainHandlers(service, btcConfig, blockchainInfo), nil
 }
 
+func NewHealthGRPCHandlers(i *do.Injector) (*grpchandlers.HealthGRPCHandlers, error) {
+	service, err := do.Invoke[*utxoservice.UTXOService](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invo UTXO service: %w", err)
+	}
+
+	blockchainInfo, err := do.Invoke[*blockchaininfo.BlockchainInfo](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke blockchain info: %w", err)
+	}
+
+	handlers, err := grpchandlers.NewHealthHandlers(
+		blockchainInfo,
+		service,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create grpc health handlers")
+	}
+
+	return handlers, nil
+}
+
 func NewAddressV1GRPCHandlers(i *do.Injector) (*grpchandlers.TxOutsV1AddressesHandlers, error) {
 	service, err := do.Invoke[*utxoservice.UTXOService](i)
 	if err != nil {
@@ -532,9 +555,19 @@ func NewTxOutsGatewayServeMux(i *do.Injector) (*runtime.ServeMux, error) {
 		return nil, fmt.Errorf("failed to invoke blockchain grpc handlers: %w", err)
 	}
 
+	healthHandlers, err := do.Invoke[*grpchandlers.HealthGRPCHandlers](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke health grpc handlers: %w", err)
+	}
+
 	ctx := context.Background()
 
-	mux := runtime.NewServeMux()
+	mux := runtime.NewServeMux(
+		runtime.WithHealthEndpointAt(
+			grpchandlers.NewHealthClient(healthHandlers),
+			"/health",
+		),
+	)
 
 	err = TxOuts_V1.RegisterAddressesHandlerServer(ctx, mux, addressHandlers)
 	if err != nil {
@@ -560,12 +593,18 @@ func NewGRPCServer(i *do.Injector) (*grpc.Server, error) {
 		return nil, fmt.Errorf("failed to invoke blockchain grpc handlers: %w", err)
 	}
 
+	healthHandlers, err := do.Invoke[*grpchandlers.HealthGRPCHandlers](i)
+	if err != nil {
+		return nil, fmt.Errorf("failed to invoke health grpc handlers: %w", err)
+	}
+
 	server := grpc.NewServer(
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	)
 
 	TxOuts_V1.RegisterAddressesServer(server, addressHandlers)
 	TxOuts_V1.RegisterBlockchainServer(server, blockchainHandlers)
+	grpc_health_v1.RegisterHealthServer(server, healthHandlers)
 
 	reflection.Register(server)
 
