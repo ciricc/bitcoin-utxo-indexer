@@ -1,0 +1,8 @@
+api
+.vscode
+docker
+.dockerignore
+.gitignore
+Taskfile.yml
+bin
+Dockerfile
